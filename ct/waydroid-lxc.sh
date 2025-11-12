@@ -9,32 +9,56 @@
 GPU_TYPE=${1:-intel}
 USE_GAPPS=${2:-yes}
 SOFTWARE_RENDERING=${3:-0}
+GPU_DEVICE=${4:-}
+RENDER_NODE=${5:-}
 
-# Color definitions
-BL="\033[36m"
-RD="\033[01;31m"
-GN="\033[1;92m"
-YW="\033[1;93m"
-CL="\033[m"
-CM="${GN}✓${CL}"
-CROSS="${RD}✗${CL}"
+# Source community script functions if available
+if [ -n "${FUNCTIONS_FILE_PATH}" ]; then
+    source <(echo "$FUNCTIONS_FILE_PATH")
+    color
+    verb_ip6
+    catch_errors
+    setting_up_container
+    network_check
+    update_os
+else
+    # Fallback color definitions
+    BL="\033[36m"
+    RD="\033[01;31m"
+    GN="\033[1;92m"
+    YW="\033[1;93m"
+    CL="\033[m"
+    CM="${GN}✓${CL}"
+    CROSS="${RD}✗${CL}"
 
-# Functions
-msg_info() {
-    echo -e "${BL}[INFO]${CL} $1"
-}
+    # Fallback functions
+    msg_info() {
+        echo -e "${BL}[INFO]${CL} $1"
+    }
 
-msg_ok() {
-    echo -e "${CM} $1"
-}
+    msg_ok() {
+        echo -e "${CM} $1"
+    }
 
-msg_error() {
-    echo -e "${CROSS} $1"
-}
+    msg_error() {
+        echo -e "${CROSS} $1"
+    }
 
-msg_warn() {
-    echo -e "${YW}[WARN]${CL} $1"
-}
+    msg_warn() {
+        echo -e "${YW}[WARN]${CL} $1"
+    }
+
+    # Silent execution helper
+    if [ "${VERBOSE}" = "yes" ]; then
+        STD=""
+    else
+        STD="&>/dev/null"
+    fi
+
+    # Basic setup
+    $STD apt-get update
+    $STD apt-get upgrade -y
+fi
 
 echo -e "${GN}═══════════════════════════════════════════════${CL}"
 echo -e "${GN}  Waydroid Container Setup${CL}"
@@ -42,16 +66,12 @@ echo -e "${GN}══════════════════════
 echo -e "${BL}GPU Type:${CL} ${GN}${GPU_TYPE}${CL}"
 echo -e "${BL}Software Rendering:${CL} ${GN}$([ "$SOFTWARE_RENDERING" = "1" ] && echo "Yes" || echo "No")${CL}"
 echo -e "${BL}GAPPS:${CL} ${GN}${USE_GAPPS}${CL}"
+[ -n "$GPU_DEVICE" ] && echo -e "${BL}GPU Device:${CL} ${GN}${GPU_DEVICE}${CL}"
+[ -n "$RENDER_NODE" ] && echo -e "${BL}Render Node:${CL} ${GN}${RENDER_NODE}${CL}"
 echo -e "${GN}═══════════════════════════════════════════════${CL}\n"
 
-# Update system
-msg_info "Updating system packages..."
-apt-get update
-apt-get upgrade -y
-msg_ok "System updated"
-
 msg_info "Installing Dependencies"
-apt-get install -y \
+$STD apt-get install -y \
   curl \
   sudo \
   gnupg \
@@ -63,7 +83,7 @@ apt-get install -y \
 msg_ok "Dependencies Installed"
 
 msg_info "Installing Wayland and Compositor"
-apt-get install -y \
+$STD apt-get install -y \
   wayland-protocols \
   weston \
   sway \
@@ -76,7 +96,7 @@ if [ "$SOFTWARE_RENDERING" = "0" ]; then
 
     case $GPU_TYPE in
         intel)
-            apt-get install -y \
+            $STD apt-get install -y \
               intel-media-va-driver \
               i965-va-driver \
               mesa-va-drivers \
@@ -85,7 +105,7 @@ if [ "$SOFTWARE_RENDERING" = "0" ]; then
             msg_ok "Intel GPU drivers installed"
             ;;
         amd)
-            apt-get install -y \
+            $STD apt-get install -y \
               mesa-va-drivers \
               mesa-vulkan-drivers \
               libgl1-mesa-dri \
@@ -98,7 +118,7 @@ if [ "$SOFTWARE_RENDERING" = "0" ]; then
     esac
 else
     msg_info "Installing software rendering support..."
-    apt-get install -y \
+    $STD apt-get install -y \
       libgl1-mesa-dri \
       mesa-utils
     msg_ok "Software rendering support installed"
@@ -107,22 +127,22 @@ fi
 msg_info "Adding Waydroid Repository"
 curl -fsSL https://repo.waydro.id/waydroid.gpg | gpg --dearmor -o /usr/share/keyrings/waydroid-archive-keyring.gpg
 echo "deb [signed-by=/usr/share/keyrings/waydroid-archive-keyring.gpg] https://repo.waydro.id/ $(lsb_release -cs) main" > /etc/apt/sources.list.d/waydroid.list
-apt-get update
+$STD apt-get update
 msg_ok "Waydroid Repository Added"
 
 msg_info "Installing Waydroid"
-apt-get install -y waydroid
+$STD apt-get install -y waydroid
 msg_ok "Waydroid Installed"
 
 msg_info "Installing WayVNC and Dependencies"
-apt-get install -y \
+$STD apt-get install -y \
   wayvnc \
   tigervnc-viewer \
   tigervnc-common
 msg_ok "WayVNC Installed"
 
 msg_info "Installing Additional Tools"
-apt-get install -y \
+$STD apt-get install -y \
   python3 \
   python3-pip \
   python3-venv \
@@ -182,6 +202,8 @@ export WAYLAND_DISPLAY=wayland-0
 # GPU-specific environment variables
 GPU_TYPE="${GPU_TYPE}"
 SOFTWARE_RENDERING="${SOFTWARE_RENDERING}"
+GPU_DEVICE="${GPU_DEVICE}"
+RENDER_NODE="${RENDER_NODE}"
 
 if [ "\$SOFTWARE_RENDERING" = "0" ]; then
     case \$GPU_TYPE in
@@ -194,6 +216,11 @@ if [ "\$SOFTWARE_RENDERING" = "0" ]; then
             export LIBVA_DRIVER_NAME=radeonsi
             ;;
     esac
+
+    # Set specific GPU device if specified
+    if [ -n "\$GPU_DEVICE" ]; then
+        export DRI_PRIME=\$(basename "\$GPU_DEVICE" | sed 's/card//')
+    fi
 else
     export LIBGL_ALWAYS_SOFTWARE=1
 fi
@@ -229,6 +256,8 @@ waydroid session start &
 echo "Waydroid started. VNC available on port 5900"
 echo "Sway PID: \$SWAY_PID"
 echo "WayVNC PID: \$WAYVNC_PID"
+[ -n "\$GPU_DEVICE" ] && echo "Using GPU: \$GPU_DEVICE"
+[ -n "\$RENDER_NODE" ] && echo "Using Render Node: \$RENDER_NODE"
 
 # Keep script running
 wait
@@ -387,10 +416,23 @@ EOF
 systemctl daemon-reload
 msg_ok "API Service Created"
 
-msg_info "Cleaning up"
-apt-get autoremove -y
-apt-get autoclean -y
-msg_ok "Cleanup Complete"
+# Cleanup using community script pattern if available
+if command -v cleanup_lxc &>/dev/null; then
+    msg_info "Cleaning up"
+    cleanup_lxc
+    msg_ok "Cleanup Complete"
+else
+    msg_info "Cleaning up"
+    $STD apt-get autoremove -y
+    $STD apt-get autoclean -y
+    msg_ok "Cleanup Complete"
+fi
+
+# Customize MOTD if function is available
+if command -v motd_ssh &>/dev/null; then
+    motd_ssh
+    customize
+fi
 
 echo -e "\n${GN}═══════════════════════════════════════════════${CL}"
 echo -e "${GN}  Waydroid LXC Setup Complete!${CL}"
@@ -398,6 +440,8 @@ echo -e "${GN}══════════════════════
 echo -e "${BL}Configuration:${CL}"
 echo -e "  GPU Type: ${GN}${GPU_TYPE}${CL}"
 echo -e "  Rendering: ${GN}$([ "$SOFTWARE_RENDERING" = "1" ] && echo "Software" || echo "Hardware Accelerated")${CL}"
+[ -n "$GPU_DEVICE" ] && echo -e "  GPU Device: ${GN}${GPU_DEVICE}${CL}"
+[ -n "$RENDER_NODE" ] && echo -e "  Render Node: ${GN}${RENDER_NODE}${CL}"
 echo -e "  GAPPS: ${GN}${USE_GAPPS}${CL}\n"
 echo -e "${BL}Next steps:${CL}"
 echo -e "1. Start Waydroid: ${GN}systemctl start waydroid-vnc${CL}"

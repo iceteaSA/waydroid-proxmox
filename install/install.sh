@@ -26,6 +26,8 @@ UNPRIVILEGED=0
 GPU_TYPE=""
 USE_GAPPS="yes"
 SOFTWARE_RENDERING=0
+GPU_DEVICE=""
+RENDER_NODE=""
 
 # Functions
 msg_info() {
@@ -156,20 +158,96 @@ if [ "$SOFTWARE_RENDERING" = "0" ]; then
     echo ""
 fi
 
-# Get GPU device information if hardware acceleration
+# Detect and select GPU devices if hardware acceleration
 if [ "$SOFTWARE_RENDERING" = "0" ]; then
     msg_info "Detecting GPU devices..."
+
     if [ -d /dev/dri ]; then
-        GPU_DEVICES=$(ls -la /dev/dri/ 2>/dev/null | grep -E "card|renderD" | awk '{print $NF}')
-        if [ -n "$GPU_DEVICES" ]; then
-            msg_ok "Found GPU devices: $(echo $GPU_DEVICES | tr '\n' ' ')"
-        else
+        # Detect all card and renderD devices
+        mapfile -t CARDS < <(ls /dev/dri/card* 2>/dev/null | sort)
+        mapfile -t RENDERS < <(ls /dev/dri/renderD* 2>/dev/null | sort)
+
+        if [ ${#CARDS[@]} -eq 0 ] && [ ${#RENDERS[@]} -eq 0 ]; then
             msg_warn "No GPU devices found in /dev/dri/"
+            read -p "Continue with software rendering? (y/N): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                SOFTWARE_RENDERING=1
+                GPU_TYPE="software"
+            else
+                exit 1
+            fi
+        else
+            msg_ok "Found GPU devices"
+
+            # Select card device if multiple available
+            if [ ${#CARDS[@]} -gt 1 ]; then
+                echo -e "\n${BL}Multiple GPU card devices detected:${CL}"
+                for i in "${!CARDS[@]}"; do
+                    device="${CARDS[$i]}"
+                    # Try to get GPU info for this card
+                    card_num=$(basename "$device" | sed 's/card//')
+                    gpu_info=""
+
+                    # Get GPU info from lspci if available
+                    if [ -f "/sys/class/drm/card${card_num}/device/uevent" ]; then
+                        pci_slot=$(grep PCI_SLOT_NAME /sys/class/drm/card${card_num}/device/uevent 2>/dev/null | cut -d= -f2)
+                        if [ -n "$pci_slot" ]; then
+                            gpu_info=$(lspci -s "$pci_slot" | grep -i "VGA\|3D\|Display" | cut -d: -f3- | xargs)
+                        fi
+                    fi
+
+                    echo -e "  $((i+1))) ${device}${gpu_info:+ - $gpu_info}"
+                done
+
+                read -p "Select card device [1]: " CARD_CHOICE
+                CARD_CHOICE=${CARD_CHOICE:-1}
+
+                if [ "$CARD_CHOICE" -ge 1 ] && [ "$CARD_CHOICE" -le ${#CARDS[@]} ]; then
+                    GPU_DEVICE="${CARDS[$((CARD_CHOICE-1))]}"
+                    msg_ok "Selected: $GPU_DEVICE"
+                else
+                    GPU_DEVICE="${CARDS[0]}"
+                    msg_warn "Invalid choice, using: $GPU_DEVICE"
+                fi
+            elif [ ${#CARDS[@]} -eq 1 ]; then
+                GPU_DEVICE="${CARDS[0]}"
+                msg_ok "Using card device: $GPU_DEVICE"
+            fi
+
+            # Select render node if multiple available
+            if [ ${#RENDERS[@]} -gt 1 ]; then
+                echo -e "\n${BL}Multiple render nodes detected:${CL}"
+                for i in "${!RENDERS[@]}"; do
+                    device="${RENDERS[$i]}"
+                    # Try to get info about render node
+                    render_num=$(basename "$device" | sed 's/renderD//')
+
+                    echo -e "  $((i+1))) ${device}"
+                done
+
+                read -p "Select render node [1]: " RENDER_CHOICE
+                RENDER_CHOICE=${RENDER_CHOICE:-1}
+
+                if [ "$RENDER_CHOICE" -ge 1 ] && [ "$RENDER_CHOICE" -le ${#RENDERS[@]} ]; then
+                    RENDER_NODE="${RENDERS[$((RENDER_CHOICE-1))]}"
+                    msg_ok "Selected: $RENDER_NODE"
+                else
+                    RENDER_NODE="${RENDERS[0]}"
+                    msg_warn "Invalid choice, using: $RENDER_NODE"
+                fi
+            elif [ ${#RENDERS[@]} -eq 1 ]; then
+                RENDER_NODE="${RENDERS[0]}"
+                msg_ok "Using render node: $RENDER_NODE"
+            fi
+
+            echo ""
         fi
     else
         msg_warn "/dev/dri/ directory not found"
+        SOFTWARE_RENDERING=1
+        GPU_TYPE="software"
     fi
-    echo ""
 fi
 
 # Ask about GAPPS
@@ -200,6 +278,10 @@ echo -e "  Disk: ${GN}${DISK_SIZE}GB${CL}"
 echo -e "${BL}GPU:${CL}"
 echo -e "  Type: ${GN}${GPU_TYPE}${CL}"
 echo -e "  Acceleration: ${GN}$([ "$SOFTWARE_RENDERING" = "1" ] && echo "Software" || echo "Hardware")${CL}"
+if [ "$SOFTWARE_RENDERING" = "0" ]; then
+    [ -n "$GPU_DEVICE" ] && echo -e "  Card: ${GN}${GPU_DEVICE}${CL}"
+    [ -n "$RENDER_NODE" ] && echo -e "  Render: ${GN}${RENDER_NODE}${CL}"
+fi
 echo -e "${BL}Android:${CL}"
 echo -e "  GAPPS: ${GN}${USE_GAPPS}${CL}"
 echo -e "${GN}═══════════════════════════════════════════════${CL}\n"
@@ -267,6 +349,17 @@ lxc.mount.entry: /dev/dri dev/dri none bind,optional,create=dir 0 0
 lxc.mount.entry: /dev/fb0 dev/fb0 none bind,optional,create=file 0 0
 EOF
 
+    # Add specific device mounts if selected
+    if [ -n "$GPU_DEVICE" ]; then
+        card_name=$(basename "$GPU_DEVICE")
+        echo "lxc.mount.entry: $GPU_DEVICE dev/dri/$card_name none bind,optional,create=file 0 0" >> $CONFIG_FILE
+    fi
+
+    if [ -n "$RENDER_NODE" ]; then
+        render_name=$(basename "$RENDER_NODE")
+        echo "lxc.mount.entry: $RENDER_NODE dev/dri/$render_name none bind,optional,create=file 0 0" >> $CONFIG_FILE
+    fi
+
     msg_ok "GPU passthrough configured"
 else
     msg_info "Skipping GPU passthrough (software rendering mode)"
@@ -316,7 +409,7 @@ msg_ok "Setup script copied"
 
 # Execute setup script in container with parameters
 msg_info "Running setup script in container (this may take several minutes)..."
-pct exec $CTID -- bash /tmp/waydroid-setup.sh "$GPU_TYPE" "$USE_GAPPS" "$SOFTWARE_RENDERING"
+pct exec $CTID -- bash /tmp/waydroid-setup.sh "$GPU_TYPE" "$USE_GAPPS" "$SOFTWARE_RENDERING" "$GPU_DEVICE" "$RENDER_NODE"
 
 # Get container IP
 CONTAINER_IP=$(pct exec $CTID -- hostname -I | awk '{print $1}')
@@ -333,6 +426,10 @@ echo -e "  Hostname: ${GN}${HOSTNAME}${CL}"
 echo -e "${BL}GPU Configuration:${CL}"
 echo -e "  Type: ${GN}${GPU_TYPE}${CL}"
 echo -e "  Rendering: ${GN}$([ "$SOFTWARE_RENDERING" = "1" ] && echo "Software" || echo "Hardware Accelerated")${CL}"
+if [ "$SOFTWARE_RENDERING" = "0" ]; then
+    [ -n "$GPU_DEVICE" ] && echo -e "  Card: ${GN}${GPU_DEVICE}${CL}"
+    [ -n "$RENDER_NODE" ] && echo -e "  Render: ${GN}${RENDER_NODE}${CL}"
+fi
 echo -e "${BL}Android:${CL}"
 echo -e "  GAPPS: ${GN}${USE_GAPPS}${CL}"
 echo -e "${BL}Access Information:${CL}"
