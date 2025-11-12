@@ -44,7 +44,7 @@ check_component() {
     local test_cmd="$2"
     local critical="${3:-no}"
 
-    if eval "$test_cmd" &>/dev/null; then
+    if bash -c "$test_cmd" &>/dev/null; then
         echo -e "${GN}✓${CL} $name: OK"
         log_health "$name: OK"
         return 0
@@ -73,7 +73,8 @@ echo -e "${GN}══════════════════════
 
 # 1. System Resources
 echo -e "${BL}[1/10] System Resources${CL}"
-check_component "CPU Load" "[ \$(awk '{print \$1}' /proc/loadavg | cut -d. -f1) -lt 8 ]"
+CPU_THRESHOLD=$(($(nproc) * 2))
+check_component "CPU Load" "[ \$(awk '{print \$1}' /proc/loadavg | cut -d. -f1) -lt $CPU_THRESHOLD ]"
 check_component "Memory Available" "[ \$(free -m | awk 'NR==2{print \$7}') -gt 256 ]" "yes"
 check_component "Disk Space" "[ \$(df -h / | awk 'NR==2{print \$5}' | tr -d '%') -lt 90 ]" "yes"
 echo ""
@@ -134,14 +135,14 @@ echo ""
 # 9. Network Connectivity
 echo -e "${BL}[9/10] Network${CL}"
 check_component "Internet Connectivity" "ping -c 1 -W 2 8.8.8.8"
-check_component "DNS Resolution" "nslookup waydro.id"
+check_component "DNS Resolution" "host waydro.id"
 check_component "Container IP" "hostname -I | grep -q '[0-9]'"
 echo ""
 
 # 10. Logs and Errors
 echo -e "${BL}[10/10] Recent Errors${CL}"
 if [ -f /var/log/waydroid-api.log ]; then
-    recent_errors=$(grep -c "ERROR" /var/log/waydroid-api.log 2>/dev/null | tail -100 || echo "0")
+    recent_errors=$(tail -n 100 /var/log/waydroid-api.log 2>/dev/null | grep -c "ERROR" || echo "0")
     if [ "$recent_errors" -gt 10 ]; then
         echo -e "${YW}!${CL} API Errors: $recent_errors errors in recent logs"
         ISSUES_FOUND=$((ISSUES_FOUND + 1))
@@ -169,26 +170,35 @@ if [ "$OVERALL_HEALTH" = "healthy" ]; then
 elif [ "$OVERALL_HEALTH" = "degraded" ]; then
     echo -e "${YW}! Overall Status: DEGRADED${CL}"
     echo -e "  Issues found: $ISSUES_FOUND"
-    current_failures=$(cat "$ALERT_FILE")
-    echo $((current_failures + 1)) > "$ALERT_FILE"
+    (
+        flock -x 200
+        current_failures=$(cat "$ALERT_FILE")
+        echo $((current_failures + 1)) > "$ALERT_FILE"
+    ) 200>"$ALERT_FILE.lock"
     EXIT_CODE=1
 else
     echo -e "${RD}✗ Overall Status: CRITICAL${CL}"
     echo -e "  Critical issues found: $ISSUES_FOUND"
-    current_failures=$(cat "$ALERT_FILE")
-    echo $((current_failures + 1)) > "$ALERT_FILE"
+    (
+        flock -x 200
+        current_failures=$(cat "$ALERT_FILE")
+        echo $((current_failures + 1)) > "$ALERT_FILE"
+    ) 200>"$ALERT_FILE.lock"
     EXIT_CODE=2
 fi
 echo -e "${GN}═══════════════════════════════════════════════${CL}\n"
 
 # Check if we need to alert
-current_failures=$(cat "$ALERT_FILE")
-if [ "$current_failures" -ge "$ALERT_THRESHOLD" ]; then
-    log_health "ALERT: $current_failures consecutive health check failures!"
-    if [ -f /usr/local/bin/waydroid-alert.sh ]; then
-        /usr/local/bin/waydroid-alert.sh "Health check failed $current_failures times"
+(
+    flock -s 200
+    current_failures=$(cat "$ALERT_FILE")
+    if [ "$current_failures" -ge "$ALERT_THRESHOLD" ]; then
+        log_health "ALERT: $current_failures consecutive health check failures!"
+        if [ -f /usr/local/bin/waydroid-alert.sh ]; then
+            /usr/local/bin/waydroid-alert.sh "Health check failed $current_failures times"
+        fi
     fi
-fi
+) 200<"$ALERT_FILE.lock"
 
 # Output quick status for prometheus/monitoring
 cat > /var/run/waydroid-health-status.json <<EOF

@@ -27,6 +27,34 @@ MAX_BACKUPS="${MAX_BACKUPS:-5}"
 # Ensure backup directory exists
 mkdir -p "$BACKUP_DIR"
 
+# Validate tar archive contents to prevent tar bombs and path traversal
+validate_tar_archive() {
+    local archive_file="$1"
+    local expected_base_dir="${2:-}"
+
+    # Check if archive contains absolute paths or parent directory references
+    if tar -tzf "$archive_file" 2>/dev/null | grep -qE '(^/|^\.\./|/\.\./|\.\.$)'; then
+        msg_error "Archive contains dangerous paths (absolute or parent directory references)"
+        return 1
+    fi
+
+    # If expected base directory is specified, verify all paths start with it
+    if [ -n "$expected_base_dir" ]; then
+        if tar -tzf "$archive_file" 2>/dev/null | grep -v "^${expected_base_dir}/" | grep -q .; then
+            msg_error "Archive contains files outside expected directory: $expected_base_dir"
+            return 1
+        fi
+    fi
+
+    # Check for suspicious file names
+    if tar -tzf "$archive_file" 2>/dev/null | grep -qE '(\$|\||;|&|`|\(|\)|<|>|\{|\})'; then
+        msg_error "Archive contains files with suspicious characters"
+        return 1
+    fi
+
+    return 0
+}
+
 show_help() {
     cat << EOF
 ${GN}Waydroid Backup and Restore Tool${CL}
@@ -65,7 +93,7 @@ create_backup() {
     msg_info "Creating backup: $backup_name"
 
     # Check if Waydroid is running
-    if pgrep -f "waydroid session" > /dev/null; then
+    if pgrep -f "^(/usr/bin/python3 )?/usr/bin/waydroid (container|session)" > /dev/null; then
         msg_warn "Waydroid is currently running. Stopping for backup..."
         systemctl stop waydroid-vnc.service 2>/dev/null || true
         waydroid session stop 2>/dev/null || true
@@ -143,7 +171,7 @@ EOF
 list_backups() {
     echo -e "${GN}Available Backups:${CL}\n"
 
-    if [ ! -d "$BACKUP_DIR" ] || [ -z "$(ls -A $BACKUP_DIR 2>/dev/null)" ]; then
+    if [ ! -d "$BACKUP_DIR" ] || [ -z "$(ls -A "$BACKUP_DIR" 2>/dev/null)" ]; then
         echo "No backups found in $BACKUP_DIR"
         return
     fi
@@ -176,7 +204,6 @@ list_backups() {
 
 restore_backup() {
     local backup_name="$1"
-    local backup_path="$BACKUP_DIR/$backup_name"
 
     if [ -z "$backup_name" ]; then
         msg_error "Backup name required"
@@ -184,6 +211,14 @@ restore_backup() {
         echo "Run '$0 list' to see available backups"
         exit 1
     fi
+
+    # Validate backup name to prevent path traversal attacks
+    if [[ "$backup_name" =~ (\.\./|^/|^\.|[[:space:]]|\$|[|;]|&|[\`]|[()]|[<>]|[{}]|[\[\]]) ]]; then
+        msg_error "Invalid backup name: contains dangerous characters or path traversal patterns"
+        exit 1
+    fi
+
+    local backup_path="$BACKUP_DIR/$backup_name"
 
     if [ ! -d "$backup_path" ]; then
         msg_error "Backup not found: $backup_name"
@@ -231,13 +266,21 @@ restore_backup() {
     # Restore user data
     if [ -f "$backup_path/userdata.tar.gz" ]; then
         msg_info "Restoring user data and apps..."
-        tar -xzf "$backup_path/userdata.tar.gz" -C "$WAYDROID_DATA"
+        if ! validate_tar_archive "$backup_path/userdata.tar.gz" "data"; then
+            msg_error "Validation failed for userdata archive"
+            exit 1
+        fi
+        tar --no-absolute-names -xzf "$backup_path/userdata.tar.gz" -C "$WAYDROID_DATA"
     fi
 
     # Restore images if available
     if [ -f "$backup_path/images.tar.gz" ]; then
         msg_info "Restoring system images..."
-        tar -xzf "$backup_path/images.tar.gz" -C "$WAYDROID_DATA"
+        if ! validate_tar_archive "$backup_path/images.tar.gz" "images"; then
+            msg_error "Validation failed for images archive"
+            exit 1
+        fi
+        tar --no-absolute-names -xzf "$backup_path/images.tar.gz" -C "$WAYDROID_DATA"
     fi
 
     msg_ok "Restore completed successfully"
@@ -268,6 +311,13 @@ clean_old_backups() {
 
 export_backup() {
     local backup_name="$1"
+
+    # Validate backup name to prevent path traversal attacks
+    if [[ "$backup_name" =~ (\.\./|^/|^\.|[[:space:]]|\$|[|;]|&|[\`]|[()]|[<>]|[{}]|[\[\]]) ]]; then
+        msg_error "Invalid backup name: contains dangerous characters or path traversal patterns"
+        exit 1
+    fi
+
     local backup_path="$BACKUP_DIR/$backup_name"
 
     if [ ! -d "$backup_path" ]; then
@@ -294,7 +344,14 @@ import_backup() {
     fi
 
     msg_info "Importing backup from: $import_file"
-    tar -xzf "$import_file" -C "$BACKUP_DIR"
+
+    # Validate the archive before extraction
+    if ! validate_tar_archive "$import_file" "waydroid-backup-"; then
+        msg_error "Validation failed for import archive"
+        exit 1
+    fi
+
+    tar --no-absolute-names -xzf "$import_file" -C "$BACKUP_DIR"
 
     msg_ok "Backup imported successfully"
     list_backups

@@ -57,8 +57,21 @@ kernel.sched_latency_ns = 10000000
 kernel.sched_min_granularity_ns = 1000000
 EOF
 
-sysctl -p /etc/sysctl.d/99-waydroid-performance.conf &>/dev/null
-msg_ok "Kernel parameters optimized"
+# Backup existing sysctl config if it exists
+if [ -f /etc/sysctl.d/99-waydroid-performance.conf.bak ]; then
+    msg_info "Backup already exists"
+else
+    if [ -f /etc/sysctl.conf ]; then
+        cp /etc/sysctl.conf /etc/sysctl.conf.bak 2>/dev/null || true
+    fi
+fi
+
+# Validate and apply sysctl parameters
+if sysctl -p /etc/sysctl.d/99-waydroid-performance.conf &>/dev/null; then
+    msg_ok "Kernel parameters optimized"
+else
+    msg_error "Failed to apply some kernel parameters (may not be available in LXC)"
+fi
 echo ""
 
 # 2. CPU Governor
@@ -112,7 +125,7 @@ if command -v zramctl &>/dev/null; then
         msg_info "Configuring zram for better memory efficiency..."
         modprobe zram 2>/dev/null || true
         if [ -b /dev/zram0 ]; then
-            zram_size=$((total_mem * 256))  # 25% of RAM
+            zram_size=$((total_mem / 4))  # 25% of RAM
             zramctl -f -s "${zram_size}M" -a lz4 2>/dev/null && msg_ok "zram configured"
         fi
     else
@@ -152,8 +165,8 @@ EOF
 
     # Set GPU device permissions
     if [ -e /dev/dri/card0 ]; then
-        chmod 666 /dev/dri/card* 2>/dev/null
-        chmod 666 /dev/dri/renderD* 2>/dev/null
+        chmod 660 /dev/dri/card* 2>/dev/null
+        chmod 660 /dev/dri/renderD* 2>/dev/null
         msg_ok "GPU device permissions set"
     fi
 else
@@ -164,8 +177,10 @@ echo ""
 # 6. Waydroid specific optimizations
 echo -e "${BL}[6/7] Waydroid Configuration Tuning${CL}"
 if [ -f /var/lib/waydroid/waydroid_base.prop ]; then
-    # Create performance overrides
-    cat >> /var/lib/waydroid/waydroid_base.prop <<'EOF'
+    # Check for duplicate property entries before appending
+    if ! grep -q "# Performance optimizations" /var/lib/waydroid/waydroid_base.prop; then
+        # Create performance overrides
+        cat >> /var/lib/waydroid/waydroid_base.prop <<'EOF'
 
 # Performance optimizations
 persist.sys.ui.hw=1
@@ -191,7 +206,10 @@ dalvik.vm.heaptargetutilization=0.75
 dalvik.vm.heapminfree=2m
 dalvik.vm.heapmaxfree=8m
 EOF
-    msg_ok "Waydroid properties configured for performance"
+        msg_ok "Waydroid properties configured for performance"
+    else
+        msg_ok "Waydroid properties already optimized"
+    fi
 else
     msg_info "Waydroid not yet initialized - run 'waydroid init' first"
 fi

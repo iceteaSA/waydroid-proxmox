@@ -15,13 +15,90 @@ echo -e "${GN}Configuring Proxmox Host for Intel N150${CL}\n"
 
 # Load configuration
 CONFIG_FILE="${SCRIPT_DIR}/../config/intel-n150.conf"
-if [ -f "$CONFIG_FILE" ]; then
-    source "$CONFIG_FILE"
-    msg_ok "Configuration loaded"
-else
+if [ ! -f "$CONFIG_FILE" ]; then
     msg_error "Configuration file not found: $CONFIG_FILE"
     exit 1
 fi
+
+# Safely parse configuration file without executing arbitrary code
+msg_info "Parsing configuration file..."
+
+# Function to safely extract a simple variable value
+safe_get_var() {
+    local var_name="$1"
+    local config_file="$2"
+    grep -E "^${var_name}=" "$config_file" | head -1 | sed "s/^${var_name}=//" | sed 's/^["'\'']\|["'\'']$//g'
+}
+
+# Function to safely extract array values
+safe_get_array() {
+    local var_name="$1"
+    local config_file="$2"
+    local in_array=0
+    local -a values=()
+
+    while IFS= read -r line; do
+        # Start of array declaration
+        if [[ "$line" =~ ^${var_name}=\( ]]; then
+            in_array=1
+            # Check if array closes on same line
+            if [[ "$line" =~ \) ]]; then
+                in_array=0
+            fi
+            continue
+        fi
+
+        # Inside array
+        if [ $in_array -eq 1 ]; then
+            # End of array
+            if [[ "$line" =~ ^\) ]]; then
+                break
+            fi
+            # Extract quoted value, trim whitespace and quotes
+            local value=$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^["\x27]//' -e 's/["\x27][[:space:]]*$//')
+            # Skip empty lines and comments
+            if [ -n "$value" ] && [[ ! "$value" =~ ^# ]]; then
+                # Validate: only allow alphanumeric, underscore, hyphen, slash, dot
+                if [[ "$value" =~ ^[a-zA-Z0-9_./:-]+$ ]]; then
+                    values+=("$value")
+                else
+                    msg_error "Invalid characters in array value for ${var_name}: $value"
+                    return 1
+                fi
+            fi
+        fi
+    done < "$config_file"
+
+    printf '%s\n' "${values[@]}"
+}
+
+# Extract and validate I915_PARAMS
+I915_PARAMS=$(safe_get_var "I915_PARAMS" "$CONFIG_FILE")
+if [ -z "$I915_PARAMS" ]; then
+    msg_error "Failed to extract I915_PARAMS from config"
+    exit 1
+fi
+# Validate I915_PARAMS: only allow alphanumeric, underscore, equals, space
+if [[ ! "$I915_PARAMS" =~ ^[a-zA-Z0-9_=[:space:]]+$ ]]; then
+    msg_error "Invalid characters in I915_PARAMS"
+    exit 1
+fi
+
+# Extract and validate REQUIRED_MODULES array
+mapfile -t REQUIRED_MODULES < <(safe_get_array "REQUIRED_MODULES" "$CONFIG_FILE")
+if [ ${#REQUIRED_MODULES[@]} -eq 0 ]; then
+    msg_error "Failed to extract REQUIRED_MODULES from config"
+    exit 1
+fi
+
+# Extract and validate DEVICE_NODES array
+mapfile -t DEVICE_NODES < <(safe_get_array "DEVICE_NODES" "$CONFIG_FILE")
+if [ ${#DEVICE_NODES[@]} -eq 0 ]; then
+    msg_error "Failed to extract DEVICE_NODES from config"
+    exit 1
+fi
+
+msg_ok "Configuration safely parsed (I915_PARAMS, REQUIRED_MODULES[${#REQUIRED_MODULES[@]}], DEVICE_NODES[${#DEVICE_NODES[@]}])"
 
 # Check for Intel GPU
 msg_info "Checking for Intel GPU..."

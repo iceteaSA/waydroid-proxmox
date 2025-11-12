@@ -46,9 +46,213 @@ msg_warn() {
     echo -e "${YW}[WARN]${CL} $1"
 }
 
+# Cleanup function for error handling
+cleanup_on_error() {
+    local exit_code=$?
+    msg_error "Installation failed at line $LINENO. Exit code: $exit_code"
+    echo ""
+
+    # Check if container was created
+    if [ -n "${CTID:-}" ] && pct status "$CTID" &>/dev/null; then
+        echo -e "${YW}Container $CTID was created but installation failed.${CL}"
+        read -p "Do you want to remove the failed container? (y/N): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            msg_info "Removing container $CTID..."
+            pct stop "$CTID" 2>/dev/null || true
+            pct destroy "$CTID" 2>/dev/null || true
+            msg_ok "Container removed"
+        else
+            msg_info "Container $CTID left in place for debugging"
+            echo -e "  Debug: ${GN}pct enter ${CTID}${CL}"
+            echo -e "  Logs: ${GN}pct exec ${CTID} -- journalctl -xe${CL}"
+        fi
+    fi
+
+    # Check if kernel module config was created
+    if [ -f /etc/modules-load.d/waydroid.conf ]; then
+        read -p "Remove kernel module configuration? (y/N): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            rm -f /etc/modules-load.d/waydroid.conf
+            msg_ok "Kernel module configuration removed"
+        fi
+    fi
+
+    echo ""
+    echo -e "${BL}Manual cleanup commands (if needed):${CL}"
+    [ -n "${CTID:-}" ] && echo -e "  Remove container: ${GN}pct destroy ${CTID}${CL}"
+    echo -e "  Remove modules config: ${GN}rm /etc/modules-load.d/waydroid.conf${CL}"
+    echo -e "  Unload modules: ${GN}modprobe -r binder_linux ashmem_linux${CL}"
+    echo ""
+
+    exit $exit_code
+}
+
+# Preflight checks function
+preflight_checks() {
+    local checks_passed=true
+
+    msg_info "Running preflight checks..."
+
+    # Check required commands
+    local required_cmds=("pct" "pvesm" "pveam" "modprobe" "lspci")
+    for cmd in "${required_cmds[@]}"; do
+        if ! command -v "$cmd" &>/dev/null; then
+            msg_error "Required command not found: $cmd"
+            checks_passed=false
+        fi
+    done
+
+    # Check if storage exists
+    if ! pvesm status | grep -q "^${STORAGE}"; then
+        msg_error "Storage '${STORAGE}' does not exist"
+        msg_info "Available storage:"
+        pvesm status | awk 'NR>1 {print "  - " $1}'
+        checks_passed=false
+    else
+        msg_ok "Storage '${STORAGE}' exists"
+    fi
+
+    # Check if network bridge exists
+    if [ ! -d "/sys/class/net/${BRIDGE}" ]; then
+        msg_error "Network bridge '${BRIDGE}' does not exist"
+        msg_info "Available bridges:"
+        ls /sys/class/net/ | grep -E '^vmbr' | while read br; do
+            echo "  - $br"
+        done
+        checks_passed=false
+    else
+        msg_ok "Network bridge '${BRIDGE}' exists"
+    fi
+
+    # Check available disk space on storage
+    local storage_path=$(pvesm path "${STORAGE}:1" 2>/dev/null | sed 's|/[^/]*$||' || echo "")
+    if [ -n "$storage_path" ] && [ -d "$storage_path" ]; then
+        local available_gb=$(df -BG "$storage_path" | awk 'NR==2 {print $4}' | sed 's/G//')
+        local required_gb=$((DISK_SIZE + 5))  # Add 5GB buffer
+        if [ "$available_gb" -lt "$required_gb" ]; then
+            msg_error "Insufficient disk space on ${STORAGE}: ${available_gb}GB available, ${required_gb}GB required"
+            checks_passed=false
+        else
+            msg_ok "Sufficient disk space: ${available_gb}GB available"
+        fi
+    fi
+
+    # Check for kernel module support
+    if ! modinfo binder_linux &>/dev/null && ! modprobe binder_linux &>/dev/null; then
+        msg_warn "binder_linux module not available - Waydroid may not work properly"
+    fi
+
+    if [ "$checks_passed" = false ]; then
+        msg_error "Preflight checks failed. Please resolve the issues above."
+        exit 1
+    fi
+
+    msg_ok "All preflight checks passed"
+    echo ""
+}
+
+# Post-installation verification function
+post_install_verification() {
+    local verification_passed=true
+
+    msg_info "Running post-installation verification..."
+    echo ""
+
+    # Check if container is running
+    if pct status "$CTID" | grep -q "running"; then
+        msg_ok "Container is running"
+    else
+        msg_error "Container is not running"
+        verification_passed=false
+    fi
+
+    # Check if container has network connectivity
+    if pct exec "$CTID" -- ping -c 1 -W 2 8.8.8.8 &>/dev/null; then
+        msg_ok "Container has network connectivity"
+    else
+        msg_warn "Container may not have network connectivity"
+        # Don't fail on network check as it might be a firewall issue
+    fi
+
+    # Check if Waydroid is installed
+    if pct exec "$CTID" -- command -v waydroid &>/dev/null; then
+        msg_ok "Waydroid is installed"
+    else
+        msg_error "Waydroid is not installed"
+        verification_passed=false
+    fi
+
+    # Check if Waydroid systemd services exist
+    if pct exec "$CTID" -- systemctl list-unit-files | grep -q "waydroid-container.service"; then
+        msg_ok "Waydroid service is configured"
+    else
+        msg_warn "Waydroid service not found"
+    fi
+
+    # Check if wayvnc is installed
+    if pct exec "$CTID" -- command -v wayvnc &>/dev/null; then
+        msg_ok "WayVNC is installed"
+    else
+        msg_warn "WayVNC is not installed"
+    fi
+
+    # Check GPU devices if hardware rendering
+    if [ "$SOFTWARE_RENDERING" = "0" ]; then
+        if pct exec "$CTID" -- test -d /dev/dri; then
+            msg_ok "GPU devices directory exists in container"
+
+            # Check specific devices
+            local gpu_devices_found=false
+            if [ -n "$GPU_DEVICE" ] && pct exec "$CTID" -- test -e "$GPU_DEVICE"; then
+                msg_ok "GPU card device accessible: $GPU_DEVICE"
+                gpu_devices_found=true
+            fi
+
+            if [ -n "$RENDER_NODE" ] && pct exec "$CTID" -- test -e "$RENDER_NODE"; then
+                msg_ok "GPU render node accessible: $RENDER_NODE"
+                gpu_devices_found=true
+            fi
+
+            if [ "$gpu_devices_found" = false ]; then
+                msg_warn "No specific GPU devices accessible, but /dev/dri exists"
+            fi
+        else
+            msg_error "GPU devices not accessible in container"
+            verification_passed=false
+        fi
+
+        # Check if GPU group permissions are correct
+        if pct exec "$CTID" -- getent group render &>/dev/null; then
+            msg_ok "Render group exists in container"
+        else
+            msg_warn "Render group not found in container"
+        fi
+    fi
+
+    # Check binder devices
+    if pct exec "$CTID" -- test -e /dev/binder; then
+        msg_ok "Binder device accessible"
+    else
+        msg_warn "Binder device not found - this may be normal on first boot"
+    fi
+
+    echo ""
+    if [ "$verification_passed" = false ]; then
+        msg_error "Post-installation verification found issues"
+        msg_warn "The container may not function correctly"
+        msg_info "Check logs: pct exec $CTID -- journalctl -xe"
+        return 1
+    else
+        msg_ok "All post-installation checks passed"
+        return 0
+    fi
+}
+
 # Enable strict error handling
 set -euo pipefail
-trap 'msg_error "Script failed at line $LINENO. Exit code: $?"' ERR
+trap cleanup_on_error ERR
 
 # Check if running on Proxmox
 if ! command -v pveversion &> /dev/null; then
@@ -70,6 +274,22 @@ echo -e "${GN}══════════════════════
 if [ -z "$CTID" ]; then
     CTID=$(pvesh get /cluster/nextid)
     msg_info "Using next available CT ID: $CTID"
+fi
+
+# Validate CTID
+if ! [[ "$CTID" =~ ^[0-9]+$ ]]; then
+    msg_error "Invalid CTID: must be numeric"
+    exit 1
+fi
+
+if [ "$CTID" -lt 100 ] || [ "$CTID" -gt 999999999 ]; then
+    msg_error "Invalid CTID: must be between 100 and 999999999"
+    exit 1
+fi
+
+if pct status "$CTID" &>/dev/null; then
+    msg_error "Container $CTID already exists"
+    exit 1
 fi
 
 # Ask about container type
@@ -213,7 +433,11 @@ if [ "$SOFTWARE_RENDERING" = "0" ]; then
                 read -p "Select card device [1]: " CARD_CHOICE
                 CARD_CHOICE=${CARD_CHOICE:-1}
 
-                if [ "$CARD_CHOICE" -ge 1 ] && [ "$CARD_CHOICE" -le ${#CARDS[@]} ]; then
+                # Validate numeric input
+                if ! [[ "$CARD_CHOICE" =~ ^[0-9]+$ ]]; then
+                    GPU_DEVICE="${CARDS[0]}"
+                    msg_warn "Invalid input (not numeric), using: $GPU_DEVICE"
+                elif [ "$CARD_CHOICE" -ge 1 ] && [ "$CARD_CHOICE" -le ${#CARDS[@]} ]; then
                     GPU_DEVICE="${CARDS[$((CARD_CHOICE-1))]}"
                     msg_ok "Selected: $GPU_DEVICE"
                 else
@@ -239,7 +463,11 @@ if [ "$SOFTWARE_RENDERING" = "0" ]; then
                 read -p "Select render node [1]: " RENDER_CHOICE
                 RENDER_CHOICE=${RENDER_CHOICE:-1}
 
-                if [ "$RENDER_CHOICE" -ge 1 ] && [ "$RENDER_CHOICE" -le ${#RENDERS[@]} ]; then
+                # Validate numeric input
+                if ! [[ "$RENDER_CHOICE" =~ ^[0-9]+$ ]]; then
+                    RENDER_NODE="${RENDERS[0]}"
+                    msg_warn "Invalid input (not numeric), using: $RENDER_NODE"
+                elif [ "$RENDER_CHOICE" -ge 1 ] && [ "$RENDER_CHOICE" -le ${#RENDERS[@]} ]; then
                     RENDER_NODE="${RENDERS[$((RENDER_CHOICE-1))]}"
                     msg_ok "Selected: $RENDER_NODE"
                 else
@@ -304,8 +532,23 @@ if [[ ! $CONFIRM =~ ^[Yy]$ ]]; then
 fi
 echo ""
 
+# Run preflight checks
+preflight_checks
+
 # Download OS template if not present
 msg_info "Checking for OS template..."
+
+# Validate OS_TEMPLATE to prevent path traversal
+if [[ "$OS_TEMPLATE" =~ \.\./|\.\. ]]; then
+    msg_error "Invalid OS_TEMPLATE: path traversal detected"
+    exit 1
+fi
+
+if [[ "$OS_TEMPLATE" =~ ^/ ]]; then
+    msg_error "Invalid OS_TEMPLATE: absolute paths not allowed"
+    exit 1
+fi
+
 TEMPLATE_PATH="/var/lib/vz/template/cache/${OS_TEMPLATE}_amd64.tar.zst"
 if [ ! -f "$TEMPLATE_PATH" ]; then
     msg_info "Downloading Debian 12 template..."
@@ -313,7 +556,7 @@ if [ ! -f "$TEMPLATE_PATH" ]; then
         msg_error "Failed to update template list"
         exit 1
     fi
-    if ! pveam download local ${OS_TEMPLATE}_amd64.tar.zst; then
+    if ! pveam download "$STORAGE" "${OS_TEMPLATE}_amd64.tar.zst"; then
         msg_error "Failed to download template"
         exit 1
     fi
@@ -330,7 +573,7 @@ fi
 
 # Create LXC container
 msg_info "Creating LXC container ${CTID}..."
-if ! pct create $CTID $TEMPLATE_PATH \
+if ! pct create "$CTID" "$TEMPLATE_PATH" \
     --hostname "$HOSTNAME" \
     --cores "$CORES" \
     --memory "$RAM" \
@@ -352,7 +595,7 @@ msg_ok "Container created"
 CONFIG_FILE="/etc/pve/lxc/${CTID}.conf"
 
 # Add base Waydroid configuration
-cat >> $CONFIG_FILE <<EOF
+cat >> "$CONFIG_FILE" <<EOF
 
 # Waydroid Configuration
 lxc.apparmor.profile: unconfined
@@ -365,7 +608,7 @@ EOF
 if [ "$SOFTWARE_RENDERING" = "0" ]; then
     msg_info "Configuring GPU passthrough..."
 
-    cat >> $CONFIG_FILE <<EOF
+    cat >> "$CONFIG_FILE" <<EOF
 
 # GPU Passthrough for Waydroid
 lxc.cgroup2.devices.allow: c 226:* rwm
@@ -376,13 +619,23 @@ EOF
 
     # Add specific device mounts if selected
     if [ -n "$GPU_DEVICE" ]; then
+        # Validate GPU device path
+        if ! [[ "$GPU_DEVICE" =~ ^/dev/dri/card[0-9]+$ ]]; then
+            msg_error "Invalid GPU device path: $GPU_DEVICE"
+            exit 1
+        fi
         card_name=$(basename "$GPU_DEVICE")
-        echo "lxc.mount.entry: $GPU_DEVICE dev/dri/$card_name none bind,optional,create=file 0 0" >> $CONFIG_FILE
+        echo "lxc.mount.entry: $GPU_DEVICE dev/dri/$card_name none bind,optional,create=file 0 0" >> "$CONFIG_FILE"
     fi
 
     if [ -n "$RENDER_NODE" ]; then
+        # Validate render node path
+        if ! [[ "$RENDER_NODE" =~ ^/dev/dri/renderD[0-9]+$ ]]; then
+            msg_error "Invalid render node path: $RENDER_NODE"
+            exit 1
+        fi
         render_name=$(basename "$RENDER_NODE")
-        echo "lxc.mount.entry: $RENDER_NODE dev/dri/$render_name none bind,optional,create=file 0 0" >> $CONFIG_FILE
+        echo "lxc.mount.entry: $RENDER_NODE dev/dri/$render_name none bind,optional,create=file 0 0" >> "$CONFIG_FILE"
     fi
 
     msg_ok "GPU passthrough configured"
@@ -392,7 +645,7 @@ fi
 
 # Add privileged-specific config
 if [ "$UNPRIVILEGED" = "0" ]; then
-    cat >> $CONFIG_FILE <<EOF
+    cat >> "$CONFIG_FILE" <<EOF
 lxc.cap.drop:
 EOF
 fi
@@ -419,27 +672,46 @@ fi
 sleep 5
 msg_ok "Container started"
 
-# Wait for container to be ready
+# Wait for container to be ready with exponential backoff
 msg_info "Waiting for container to be ready..."
 READY=false
-for i in {1..60}; do
+MAX_ATTEMPTS=15
+TOTAL_WAIT=0
+attempt=1
+wait_time=1
+
+while [ $attempt -le $MAX_ATTEMPTS ]; do
     if pct exec "$CTID" -- systemctl is-system-running --wait &>/dev/null; then
         READY=true
         break
     fi
-    if [ $((i % 10)) -eq 0 ]; then
-        msg_info "Still waiting... ($i/60)"
+
+    # Log progress every few attempts
+    if [ $attempt -eq 5 ] || [ $attempt -eq 10 ]; then
+        msg_info "Still waiting... (${TOTAL_WAIT}s elapsed, attempt $attempt/$MAX_ATTEMPTS)"
     fi
-    sleep 2
+
+    # Exponential backoff: 1, 2, 4, 8, 16, 16, 16...
+    sleep $wait_time
+    TOTAL_WAIT=$((TOTAL_WAIT + wait_time))
+
+    # Double wait time up to max of 16 seconds
+    if [ $wait_time -lt 16 ]; then
+        wait_time=$((wait_time * 2))
+    fi
+
+    attempt=$((attempt + 1))
 done
 
 if [ "$READY" = false ]; then
-    msg_error "Container failed to become ready within 120 seconds"
+    msg_error "Container failed to become ready after ${TOTAL_WAIT} seconds"
     msg_info "Checking container status..."
-    pct status "$CTID"
+    pct status "$CTID" || true
+    msg_info "Recent container logs:"
+    pct exec "$CTID" -- journalctl -n 50 --no-pager 2>/dev/null || msg_warn "Could not retrieve logs"
     exit 1
 fi
-msg_ok "Container is ready"
+msg_ok "Container is ready (took ${TOTAL_WAIT}s)"
 
 # Copy setup script into container
 msg_info "Copying setup script to container..."
@@ -464,6 +736,11 @@ if ! pct exec "$CTID" -- bash /tmp/waydroid-setup.sh "$GPU_TYPE" "$USE_GAPPS" "$
     msg_info "You can try to debug by entering the container: pct enter $CTID"
     msg_info "Check logs: pct exec $CTID -- journalctl -xe"
     exit 1
+fi
+
+# Run post-installation verification
+if ! post_install_verification; then
+    msg_warn "Installation completed with warnings - manual verification recommended"
 fi
 
 # Get container IP

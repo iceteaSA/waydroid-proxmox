@@ -1,0 +1,178 @@
+# Waydroid App Installation Configuration
+#
+# This file defines Android apps to be installed in Waydroid.
+# Supported sources: local files, URLs, and F-Droid repository
+#
+# Usage: /home/user/waydroid-proxmox/scripts/install-apps.sh install-batch /path/to/this/file.yaml
+
+# App installation list
+apps:
+
+  # ========================================
+  # Local APK Files
+  # ========================================
+  # Install APKs from local filesystem
+  # Paths can be absolute or relative to the config file
+
+  local:
+    - /path/to/local/app1.apk
+    - /path/to/local/app2.apk
+    # - /home/user/Downloads/MyApp.apk
+
+  # ========================================
+  # URL Downloads
+  # ========================================
+  # Install APKs from direct download URLs
+  # APKs will be cached in /var/cache/waydroid-apps
+
+  url:
+    - https://example.com/apps/app1.apk
+    - https://example.com/apps/app2.apk
+    # - https://github.com/USER/REPO/releases/download/v1.0/app.apk
+
+  # ========================================
+  # F-Droid Repository
+  # ========================================
+  # Install apps from F-Droid using package names
+  # Apps will be verified using SHA256 hashes from F-Droid index
+
+  fdroid:
+    # F-Droid client itself
+    - org.fdroid.fdroid
+
+    # Privacy-focused apps
+    - org.torproject.android
+    - net.osmand.plus
+    - org.mozilla.fennec_fdroid
+
+    # Communication
+    - org.thoughtcrime.securesms
+    - org.briarproject.briar.android
+    - im.vector.app
+
+    # Productivity
+    - com.orgzly
+    - net.gsantner.markor
+    - org.tasks
+    - com.simplemobiletools.calendar.pro
+
+    # Media
+    - org.schabi.newpipe
+    - org.videolan.vlc
+    - com.ichi2.anki
+
+    # System utilities
+    - com.termux
+    - org.connectbot
+
+    # Alternative: specify with path or url for mixed sources
+    # - path: /path/to/local.apk
+    # - url: https://example.com/app.apk
+    # - package: org.fdroid.fdroid
+
+# ========================================
+# Configuration Options
+# ========================================
+# These options control installation behavior
+# (Note: Currently passed as command-line flags, not from config file)
+
+# options:
+#   skip_verify: false        # Skip APK signature verification
+#   force: false              # Force installation over existing apps
+#   no_rollback: false        # Don't create rollback points
+#   parallel: false           # Install apps in parallel (experimental)
+#   max_retries: 3           # Maximum download retry attempts
+#   timeout: 300             # Download timeout in seconds
+
+# ========================================
+# Example Configurations
+# ========================================
+
+# Minimal configuration (F-Droid only):
+# apps:
+#   fdroid:
+#     - org.fdroid.fdroid
+#     - org.mozilla.fennec_fdroid
+
+# Local files only:
+# apps:
+#   local:
+#     - /home/user/Downloads/app1.apk
+#     - /home/user/Downloads/app2.apk
+
+# URLs only:
+# apps:
+#   url:
+#     - https://github.com/termux/termux-app/releases/download/v0.118.0/termux-app_v0.118.0+github-debug_universal.apk
+
+# Mixed sources:
+# apps:
+#   local:
+#     - /path/to/custom-app.apk
+#   url:
+#     - https://example.com/special-app.apk
+#   fdroid:
+#     - org.fdroid.fdroid
+#     - org.mozilla.fennec_fdroid
+
+# ========================================
+# Installation Instructions
+# ========================================
+#
+# 1. Copy this file and customize for your needs:
+#    cp /home/user/waydroid-proxmox/config/apps-example.yaml /home/user/waydroid-proxmox/config/my-apps.yaml
+#
+# 2. Edit the file to add your apps:
+#    nano /home/user/waydroid-proxmox/config/my-apps.yaml
+#
+# 3. Run the installation:
+#    /home/user/waydroid-proxmox/scripts/install-apps.sh install-batch /home/user/waydroid-proxmox/config/my-apps.yaml
+#
+# 4. Check installation logs:
+#    tail -f /var/log/waydroid-apps/install-*.log
+#
+# 5. List installed apps:
+#    /home/user/waydroid-proxmox/scripts/install-apps.sh list-installed
+#
+# 6. Check for updates:
+#    /home/user/waydroid-proxmox/scripts/install-apps.sh check-updates
+#
+# 7. Rollback if needed:
+#    /home/user/waydroid-proxmox/scripts/install-apps.sh rollback
+
+# ========================================
+# Advanced Usage
+# ========================================
+#
+# Install with options:
+#   install-apps.sh install-batch --force --skip-verify my-apps.yaml
+#
+# Install single app from F-Droid:
+#   install-apps.sh install-fdroid org.fdroid.fdroid
+#
+# Install from URL:
+#   install-apps.sh install-apk https://example.com/app.apk
+#
+# Search F-Droid:
+#   install-apps.sh search-fdroid "termux"
+#
+# Verify APK before installing:
+#   install-apps.sh verify /path/to/app.apk
+
+# ========================================
+# Troubleshooting
+# ========================================
+#
+# If installations fail:
+# 1. Check Waydroid is running: waydroid status
+# 2. Check logs: tail -f /var/log/waydroid-apps/install-*.log
+# 3. Verify APK manually: install-apps.sh verify /path/to/app.apk
+# 4. Try with --force flag to overwrite existing apps
+# 5. Use --skip-verify if signature verification is problematic
+#
+# Common issues:
+# - "Waydroid is not running" -> Start with: waydroid container start
+# - "Package already installed" -> Use --force flag
+# - "APK verification failed" -> Check APK is valid or use --skip-verify
+# - "Failed to download" -> Check network connectivity and URL
+# - "Package not found in F-Droid" -> Search first: install-apps.sh search-fdroid <name>
