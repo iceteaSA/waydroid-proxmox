@@ -1,78 +1,161 @@
 #!/usr/bin/env bash
 
+# Waydroid LXC Container Setup Script
 # Copyright (c) 2025
-# Author: waydroid-proxmox
 # License: MIT
 # https://github.com/iceteaSA/waydroid-proxmox
 
-source /dev/stdin <<< "$FUNCTIONS_FILE_PATH"
-color
-verb_ip6
-catch_errors
-setting_up_container
-network_check
-update_os
+# Parse parameters
+GPU_TYPE=${1:-intel}
+USE_GAPPS=${2:-yes}
+SOFTWARE_RENDERING=${3:-0}
+
+# Color definitions
+BL="\033[36m"
+RD="\033[01;31m"
+GN="\033[1;92m"
+YW="\033[1;93m"
+CL="\033[m"
+CM="${GN}✓${CL}"
+CROSS="${RD}✗${CL}"
+
+# Functions
+msg_info() {
+    echo -e "${BL}[INFO]${CL} $1"
+}
+
+msg_ok() {
+    echo -e "${CM} $1"
+}
+
+msg_error() {
+    echo -e "${CROSS} $1"
+}
+
+msg_warn() {
+    echo -e "${YW}[WARN]${CL} $1"
+}
+
+echo -e "${GN}═══════════════════════════════════════════════${CL}"
+echo -e "${GN}  Waydroid Container Setup${CL}"
+echo -e "${GN}═══════════════════════════════════════════════${CL}"
+echo -e "${BL}GPU Type:${CL} ${GN}${GPU_TYPE}${CL}"
+echo -e "${BL}Software Rendering:${CL} ${GN}$([ "$SOFTWARE_RENDERING" = "1" ] && echo "Yes" || echo "No")${CL}"
+echo -e "${BL}GAPPS:${CL} ${GN}${USE_GAPPS}${CL}"
+echo -e "${GN}═══════════════════════════════════════════════${CL}\n"
+
+# Update system
+msg_info "Updating system packages..."
+apt-get update
+apt-get upgrade -y
+msg_ok "System updated"
 
 msg_info "Installing Dependencies"
-$STD apt-get install -y \
+apt-get install -y \
   curl \
   sudo \
   gnupg \
   ca-certificates \
   lsb-release \
-  software-properties-common
+  software-properties-common \
+  wget \
+  unzip
 msg_ok "Dependencies Installed"
 
 msg_info "Installing Wayland and Compositor"
-$STD apt-get install -y \
+apt-get install -y \
   wayland-protocols \
   weston \
   sway \
   xwayland
 msg_ok "Wayland and Compositor Installed"
 
+# Install GPU-specific packages
+if [ "$SOFTWARE_RENDERING" = "0" ]; then
+    msg_info "Installing GPU drivers for ${GPU_TYPE}..."
+
+    case $GPU_TYPE in
+        intel)
+            apt-get install -y \
+              intel-media-va-driver \
+              i965-va-driver \
+              mesa-va-drivers \
+              mesa-vulkan-drivers \
+              libgl1-mesa-dri
+            msg_ok "Intel GPU drivers installed"
+            ;;
+        amd)
+            apt-get install -y \
+              mesa-va-drivers \
+              mesa-vulkan-drivers \
+              libgl1-mesa-dri \
+              firmware-amd-graphics
+            msg_ok "AMD GPU drivers installed"
+            ;;
+        *)
+            msg_info "No specific GPU drivers needed for ${GPU_TYPE}"
+            ;;
+    esac
+else
+    msg_info "Installing software rendering support..."
+    apt-get install -y \
+      libgl1-mesa-dri \
+      mesa-utils
+    msg_ok "Software rendering support installed"
+fi
+
 msg_info "Adding Waydroid Repository"
 curl -fsSL https://repo.waydro.id/waydroid.gpg | gpg --dearmor -o /usr/share/keyrings/waydroid-archive-keyring.gpg
 echo "deb [signed-by=/usr/share/keyrings/waydroid-archive-keyring.gpg] https://repo.waydro.id/ $(lsb_release -cs) main" > /etc/apt/sources.list.d/waydroid.list
-$STD apt-get update
+apt-get update
 msg_ok "Waydroid Repository Added"
 
 msg_info "Installing Waydroid"
-$STD apt-get install -y waydroid
+apt-get install -y waydroid
 msg_ok "Waydroid Installed"
 
 msg_info "Installing WayVNC and Dependencies"
-$STD apt-get install -y \
+apt-get install -y \
   wayvnc \
   tigervnc-viewer \
   tigervnc-common
 msg_ok "WayVNC Installed"
 
 msg_info "Installing Additional Tools"
-$STD apt-get install -y \
+apt-get install -y \
   python3 \
   python3-pip \
   python3-venv \
   git \
-  wget \
-  unzip
+  net-tools
 msg_ok "Additional Tools Installed"
 
-msg_info "Configuring GPU Access"
-# Add render group and configure permissions
-groupadd -f render
-usermod -aG render root
-usermod -aG video root
+# Configure GPU access (only if hardware rendering)
+if [ "$SOFTWARE_RENDERING" = "0" ]; then
+    msg_info "Configuring GPU Access"
 
-# Create device node configuration
-mkdir -p /var/lib/waydroid/lxc/waydroid/
-cat > /etc/udev/rules.d/99-waydroid-gpu.rules <<EOF
-# Intel GPU devices for Waydroid
+    # Add render group and configure permissions
+    groupadd -f render
+    usermod -aG render root
+    usermod -aG video root
+
+    # Create device node configuration
+    mkdir -p /var/lib/waydroid/lxc/waydroid/
+
+    case $GPU_TYPE in
+        intel|amd)
+            cat > /etc/udev/rules.d/99-waydroid-gpu.rules <<EOF
+# GPU devices for Waydroid
 SUBSYSTEM=="drm", KERNEL=="card[0-9]*", TAG+="waydroid", MODE="0666"
 SUBSYSTEM=="drm", KERNEL=="renderD*", TAG+="waydroid", MODE="0666"
 EOF
+            ;;
+    esac
 
-msg_ok "GPU Access Configured"
+    msg_ok "GPU Access Configured"
+else
+    msg_info "Skipping GPU configuration (software rendering mode)"
+fi
 
 msg_info "Setting up Waydroid Service"
 systemctl enable waydroid-container.service
@@ -88,7 +171,7 @@ EOF
 msg_ok "WayVNC Configuration Created"
 
 msg_info "Creating Startup Scripts"
-cat > /usr/local/bin/start-waydroid.sh <<'EOF'
+cat > /usr/local/bin/start-waydroid.sh <<EOFSCRIPT
 #!/bin/bash
 # Start Waydroid with VNC access
 
@@ -96,22 +179,45 @@ cat > /usr/local/bin/start-waydroid.sh <<'EOF'
 export XDG_RUNTIME_DIR=/run/user/0
 export WAYLAND_DISPLAY=wayland-0
 
+# GPU-specific environment variables
+GPU_TYPE="${GPU_TYPE}"
+SOFTWARE_RENDERING="${SOFTWARE_RENDERING}"
+
+if [ "\$SOFTWARE_RENDERING" = "0" ]; then
+    case \$GPU_TYPE in
+        intel)
+            export MESA_LOADER_DRIVER_OVERRIDE=iris
+            export LIBVA_DRIVER_NAME=iHD
+            ;;
+        amd)
+            export MESA_LOADER_DRIVER_OVERRIDE=radeonsi
+            export LIBVA_DRIVER_NAME=radeonsi
+            ;;
+    esac
+else
+    export LIBGL_ALWAYS_SOFTWARE=1
+fi
+
 # Create runtime directory if it doesn't exist
-mkdir -p $XDG_RUNTIME_DIR
+mkdir -p \$XDG_RUNTIME_DIR
 
 # Start Sway compositor in background
 sway &
-SWAY_PID=$!
+SWAY_PID=\$!
 sleep 3
 
 # Start WayVNC
 wayvnc 0.0.0.0 5900 &
-WAYVNC_PID=$!
+WAYVNC_PID=\$!
 
 # Initialize Waydroid if not already done
 if [ ! -d "/var/lib/waydroid/overlay" ]; then
     echo "Initializing Waydroid..."
-    waydroid init -s GAPPS -f
+    if [ "${USE_GAPPS}" = "yes" ]; then
+        waydroid init -s GAPPS -f
+    else
+        waydroid init -f
+    fi
 fi
 
 # Start Waydroid container
@@ -121,12 +227,12 @@ waydroid container start
 waydroid session start &
 
 echo "Waydroid started. VNC available on port 5900"
-echo "Sway PID: $SWAY_PID"
-echo "WayVNC PID: $WAYVNC_PID"
+echo "Sway PID: \$SWAY_PID"
+echo "WayVNC PID: \$WAYVNC_PID"
 
 # Keep script running
 wait
-EOF
+EOFSCRIPT
 
 chmod +x /usr/local/bin/start-waydroid.sh
 msg_ok "Startup Scripts Created"
@@ -155,7 +261,7 @@ systemctl daemon-reload
 msg_ok "Systemd Service Created"
 
 msg_info "Creating Home Assistant Integration API"
-cat > /usr/local/bin/waydroid-api.py <<'EOF'
+cat > /usr/local/bin/waydroid-api.py <<'EOFAPI'
 #!/usr/bin/env python3
 """
 Simple HTTP API for Home Assistant integration with Waydroid
@@ -257,7 +363,7 @@ def run_server(port=8080):
 
 if __name__ == '__main__':
     run_server()
-EOF
+EOFAPI
 
 chmod +x /usr/local/bin/waydroid-api.py
 msg_ok "Home Assistant API Created"
@@ -282,16 +388,26 @@ systemctl daemon-reload
 msg_ok "API Service Created"
 
 msg_info "Cleaning up"
-$STD apt-get autoremove -y
-$STD apt-get autoclean -y
+apt-get autoremove -y
+apt-get autoclean -y
 msg_ok "Cleanup Complete"
 
-msg_info "Setup Complete!"
-echo -e "\n${BL}Waydroid LXC Setup Complete!${CL}\n"
-echo -e "${GN}Next steps:${CL}"
-echo -e "1. Start Waydroid: ${BL}systemctl start waydroid-vnc${CL}"
-echo -e "2. Enable auto-start: ${BL}systemctl enable waydroid-vnc${CL}"
-echo -e "3. Start API: ${BL}systemctl start waydroid-api${CL}"
-echo -e "4. Enable API: ${BL}systemctl enable waydroid-api${CL}"
-echo -e "5. Access VNC: ${BL}<LXC-IP>:5900${CL}"
-echo -e "6. API endpoint: ${BL}http://<LXC-IP>:8080${CL}\n"
+echo -e "\n${GN}═══════════════════════════════════════════════${CL}"
+echo -e "${GN}  Waydroid LXC Setup Complete!${CL}"
+echo -e "${GN}═══════════════════════════════════════════════${CL}\n"
+echo -e "${BL}Configuration:${CL}"
+echo -e "  GPU Type: ${GN}${GPU_TYPE}${CL}"
+echo -e "  Rendering: ${GN}$([ "$SOFTWARE_RENDERING" = "1" ] && echo "Software" || echo "Hardware Accelerated")${CL}"
+echo -e "  GAPPS: ${GN}${USE_GAPPS}${CL}\n"
+echo -e "${BL}Next steps:${CL}"
+echo -e "1. Start Waydroid: ${GN}systemctl start waydroid-vnc${CL}"
+echo -e "2. Enable auto-start: ${GN}systemctl enable waydroid-vnc${CL}"
+echo -e "3. Start API: ${GN}systemctl start waydroid-api${CL}"
+echo -e "4. Enable API: ${GN}systemctl enable waydroid-api${CL}"
+echo -e "5. Access VNC: ${GN}<LXC-IP>:5900${CL}"
+echo -e "6. API endpoint: ${GN}http://<LXC-IP>:8080${CL}\n"
+
+if [ "$SOFTWARE_RENDERING" = "1" ]; then
+    msg_warn "Software rendering is slower than hardware acceleration"
+    echo -e "  Graphics performance may be limited\n"
+fi

@@ -14,8 +14,9 @@ Complete installation guide for Waydroid LXC on Proxmox with Intel N150 SoC.
 
 ### Hardware Requirements
 
-- **CPU**: Intel N150 (Alder Lake-N) or compatible Intel processor
-- **GPU**: Intel UHD Graphics (integrated)
+- **CPU**: Any x86_64 CPU (Intel N150 optimized)
+- **GPU**: Intel (recommended), AMD, or software rendering
+  - NVIDIA GPUs use software rendering only
 - **RAM**: Minimum 4GB (8GB recommended)
 - **Storage**: 20GB free space for LXC container
 - **Proxmox**: Version 7.x or 8.x
@@ -31,7 +32,7 @@ Complete installation guide for Waydroid LXC on Proxmox with Intel N150 SoC.
 Your Proxmox host kernel must support:
 - Binder modules (`binder_linux`)
 - Ashmem modules (`ashmem_linux`)
-- Intel i915 driver
+- GPU drivers (i915 for Intel, amdgpu for AMD)
 - IPv6 (even if not used, required for Android networking)
 
 Check your kernel:
@@ -52,12 +53,17 @@ cd waydroid-proxmox
 # Make scripts executable
 chmod +x install/install.sh scripts/*.sh
 
-# Configure Intel N150 (one-time setup)
+# Optional: Configure Intel GPU (Intel users only)
 ./scripts/configure-intel-n150.sh
 
-# Install the LXC container
+# Run interactive installer
 ./install/install.sh
 ```
+
+The installer will prompt you for:
+- **Container Type**: Privileged or Unprivileged
+- **GPU Type**: Intel, AMD, NVIDIA, or Software rendering
+- **GAPPS**: Install Google Play Store (yes/no)
 
 ## Detailed Installation
 
@@ -65,18 +71,25 @@ chmod +x install/install.sh scripts/*.sh
 
 First, ensure your Proxmox host has the required kernel modules and GPU configuration.
 
-#### 1.1 Check Intel GPU
+#### 1.1 Check Your GPU Type
 
+**Intel GPU:**
 ```bash
 lspci | grep -i "VGA.*Intel"
 ```
 
-You should see output like:
-```
-00:02.0 VGA compatible controller: Intel Corporation Alder Lake-N [UHD Graphics]
+**AMD GPU:**
+```bash
+lspci | grep -i "VGA.*AMD\|VGA.*Radeon"
 ```
 
-#### 1.2 Check GPU Devices
+**NVIDIA GPU:**
+```bash
+lspci | grep -i "VGA.*NVIDIA"
+```
+*Note: NVIDIA GPUs will use software rendering*
+
+#### 1.2 Check GPU Devices (Intel/AMD only)
 
 ```bash
 ls -la /dev/dri/
@@ -88,9 +101,9 @@ card0
 renderD128
 ```
 
-#### 1.3 Configure Intel N150
+#### 1.3 Configure Intel GPU (Intel Users Only)
 
-Run the configuration script:
+If you have an Intel GPU, run the configuration script:
 
 ```bash
 cd waydroid-proxmox
@@ -109,6 +122,10 @@ This script will:
 ```bash
 reboot
 ```
+
+#### 1.4 AMD GPU Configuration
+
+For AMD GPUs, no special configuration is needed on the host. The installer will automatically configure the container.
 
 ### Step 2: Install Waydroid LXC
 

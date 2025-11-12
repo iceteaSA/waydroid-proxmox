@@ -4,13 +4,13 @@ Run Android applications on Proxmox using Waydroid in an LXC container with full
 
 ## Features
 
-- **Full GPU Passthrough**: Direct Intel GPU access for hardware acceleration
-- **Optimized for Intel N150**: Pre-configured for Intel N150 SoC (Alder Lake-N)
+- **Multi-GPU Support**: Intel, AMD GPU passthrough or software rendering
+- **Interactive Setup**: Easy installer with GPU and GAPPS selection
 - **VNC Access**: Remote desktop access via WayVNC on port 5900
 - **Home Assistant Integration**: REST API for automation (port 8080)
 - **Lightweight**: Minimal resource usage with LXC containers
 - **Google Play Store**: Optional GAPPS integration
-- **Automated Setup**: One-command installation
+- **Flexible Security**: Privileged (GPU) or unprivileged (software) containers
 
 ## Use Cases
 
@@ -30,15 +30,18 @@ cd waydroid-proxmox
 # Make scripts executable
 chmod +x install/install.sh scripts/*.sh
 
-# Configure host for Intel N150 (one-time)
+# Optional: Configure host for Intel GPU (one-time, Intel users only)
 ./scripts/configure-intel-n150.sh
-
 # Reboot if i915 was just configured
-# reboot
 
-# Install Waydroid LXC
+# Run interactive installer
 ./install/install.sh
 ```
+
+The installer will ask you:
+1. **Container type**: Privileged (GPU passthrough) or Unprivileged (software rendering)
+2. **GPU type**: Intel, AMD, NVIDIA (software), or Software rendering
+3. **GAPPS**: Install Google Play Store (yes/no)
 
 After installation:
 - **VNC Access**: `<container-ip>:5900`
@@ -47,13 +50,15 @@ After installation:
 ## Requirements
 
 ### Hardware
-- Intel N150 (or compatible Intel CPU with integrated graphics)
-- 4GB+ RAM (8GB recommended)
-- 20GB+ free storage
+- **CPU**: Any x86_64 CPU (Intel N150 optimized)
+- **GPU**: Intel (recommended), AMD, or software rendering
+- **RAM**: 4GB+ (8GB recommended)
+- **Storage**: 20GB+ free space
 
 ### Software
 - Proxmox VE 7.x or 8.x
 - Kernel 5.15+ with binder support
+- For GPU passthrough: Privileged LXC container
 
 ## Architecture
 
@@ -143,9 +148,34 @@ automation:
 
 See [Home Assistant Integration](docs/HOME_ASSISTANT.md) for details.
 
+## GPU Support
+
+### Intel GPUs (Recommended)
+- Full hardware acceleration via Mesa/Iris
+- VA-API video decoding
+- Best performance and compatibility
+- Example: Intel N150, i3/i5/i7 with integrated graphics
+
+### AMD GPUs
+- Hardware acceleration via Mesa/RadeonSI
+- VA-API video decoding
+- Good performance
+- Example: AMD Ryzen with Radeon Graphics
+
+### NVIDIA GPUs
+- Software rendering only (GPU passthrough not supported)
+- Limited performance
+- Use for testing or non-GPU-intensive apps
+
+### Software Rendering
+- No GPU required
+- Works in unprivileged containers
+- Limited graphics performance
+- Good for headless automation
+
 ## Performance
 
-Optimized for Intel N150 (Alder Lake-N):
+Example with Intel N150 (Alder Lake-N):
 - **CPU**: 4 E-cores @ 3.6GHz
 - **GPU**: Intel UHD Graphics (24 EUs, Gen 11.5)
 - **RAM Usage**: ~1.5GB (Android + compositor)
