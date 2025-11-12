@@ -46,9 +46,19 @@ msg_warn() {
     echo -e "${YW}[WARN]${CL} $1"
 }
 
+# Enable strict error handling
+set -euo pipefail
+trap 'msg_error "Script failed at line $LINENO. Exit code: $?"' ERR
+
 # Check if running on Proxmox
 if ! command -v pveversion &> /dev/null; then
     msg_error "This script must be run on a Proxmox VE host"
+    exit 1
+fi
+
+# Check if running as root
+if [ "$(id -u)" -ne 0 ]; then
+    msg_error "This script must be run as root"
     exit 1
 fi
 
@@ -299,27 +309,42 @@ msg_info "Checking for OS template..."
 TEMPLATE_PATH="/var/lib/vz/template/cache/${OS_TEMPLATE}_amd64.tar.zst"
 if [ ! -f "$TEMPLATE_PATH" ]; then
     msg_info "Downloading Debian 12 template..."
-    pveam update
-    pveam download local ${OS_TEMPLATE}_amd64.tar.zst
+    if ! pveam update; then
+        msg_error "Failed to update template list"
+        exit 1
+    fi
+    if ! pveam download local ${OS_TEMPLATE}_amd64.tar.zst; then
+        msg_error "Failed to download template"
+        exit 1
+    fi
     msg_ok "Template downloaded"
 else
     msg_ok "Template already exists"
 fi
 
+# Verify template was downloaded
+if [ ! -f "$TEMPLATE_PATH" ]; then
+    msg_error "Template file not found after download: $TEMPLATE_PATH"
+    exit 1
+fi
+
 # Create LXC container
 msg_info "Creating LXC container ${CTID}..."
-pct create $CTID $TEMPLATE_PATH \
-    --hostname $HOSTNAME \
-    --cores $CORES \
-    --memory $RAM \
+if ! pct create $CTID $TEMPLATE_PATH \
+    --hostname "$HOSTNAME" \
+    --cores "$CORES" \
+    --memory "$RAM" \
     --swap 512 \
-    --net0 name=eth0,bridge=$BRIDGE,ip=dhcp \
-    --storage $STORAGE \
-    --rootfs $STORAGE:$DISK_SIZE \
-    --unprivileged $UNPRIVILEGED \
+    --net0 "name=eth0,bridge=$BRIDGE,ip=dhcp" \
+    --storage "$STORAGE" \
+    --rootfs "$STORAGE:$DISK_SIZE" \
+    --unprivileged "$UNPRIVILEGED" \
     --features nesting=1,keyctl=1 \
     --ostype debian \
-    --onboot 1
+    --onboot 1; then
+    msg_error "Failed to create container"
+    exit 1
+fi
 
 msg_ok "Container created"
 
@@ -387,32 +412,69 @@ msg_ok "Kernel modules configured"
 
 # Start the container
 msg_info "Starting container..."
-pct start $CTID
+if ! pct start "$CTID"; then
+    msg_error "Failed to start container"
+    exit 1
+fi
 sleep 5
 msg_ok "Container started"
 
 # Wait for container to be ready
 msg_info "Waiting for container to be ready..."
-for i in {1..30}; do
-    if pct exec $CTID -- systemctl is-system-running --wait &>/dev/null; then
+READY=false
+for i in {1..60}; do
+    if pct exec "$CTID" -- systemctl is-system-running --wait &>/dev/null; then
+        READY=true
         break
+    fi
+    if [ $((i % 10)) -eq 0 ]; then
+        msg_info "Still waiting... ($i/60)"
     fi
     sleep 2
 done
+
+if [ "$READY" = false ]; then
+    msg_error "Container failed to become ready within 120 seconds"
+    msg_info "Checking container status..."
+    pct status "$CTID"
+    exit 1
+fi
 msg_ok "Container is ready"
 
 # Copy setup script into container
 msg_info "Copying setup script to container..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-pct push $CTID "${SCRIPT_DIR}/../ct/waydroid-lxc.sh" /tmp/waydroid-setup.sh
+SETUP_SCRIPT="${SCRIPT_DIR}/../ct/waydroid-lxc.sh"
+
+if [ ! -f "$SETUP_SCRIPT" ]; then
+    msg_error "Setup script not found: $SETUP_SCRIPT"
+    exit 1
+fi
+
+if ! pct push "$CTID" "$SETUP_SCRIPT" /tmp/waydroid-setup.sh; then
+    msg_error "Failed to copy setup script to container"
+    exit 1
+fi
 msg_ok "Setup script copied"
 
 # Execute setup script in container with parameters
 msg_info "Running setup script in container (this may take several minutes)..."
-pct exec $CTID -- bash /tmp/waydroid-setup.sh "$GPU_TYPE" "$USE_GAPPS" "$SOFTWARE_RENDERING" "$GPU_DEVICE" "$RENDER_NODE"
+if ! pct exec "$CTID" -- bash /tmp/waydroid-setup.sh "$GPU_TYPE" "$USE_GAPPS" "$SOFTWARE_RENDERING" "$GPU_DEVICE" "$RENDER_NODE"; then
+    msg_error "Setup script failed inside container"
+    msg_info "You can try to debug by entering the container: pct enter $CTID"
+    msg_info "Check logs: pct exec $CTID -- journalctl -xe"
+    exit 1
+fi
 
 # Get container IP
-CONTAINER_IP=$(pct exec $CTID -- hostname -I | awk '{print $1}')
+msg_info "Retrieving container IP address..."
+CONTAINER_IP=$(pct exec "$CTID" -- hostname -I 2>/dev/null | awk '{print $1}')
+if [ -z "$CONTAINER_IP" ]; then
+    msg_warn "Could not retrieve container IP address"
+    CONTAINER_IP="<container-ip>"
+else
+    msg_ok "Container IP: $CONTAINER_IP"
+fi
 
 msg_ok "Installation Complete!"
 echo -e "\n${GN}═══════════════════════════════════════════════${CL}"

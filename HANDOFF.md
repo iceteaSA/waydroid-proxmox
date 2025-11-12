@@ -1,8 +1,8 @@
 # Developer Handoff Document
 
 **Last Updated:** 2025-01-12
-**Branch:** `claude/waydroid-lxc-setup-011CV4mwb3C1Cp6KrtRRAAhW`
-**Status:** ✅ Multi-GPU selection and community script integration complete
+**Branch:** `claude/continue-handoff-doc-011CV4pXsru8skseBHPwD2Q5`
+**Status:** ✅ Major security and feature improvements completed (2-hour enhancement session)
 
 ---
 
@@ -16,11 +16,40 @@ This project provides an automated installer for running Android (via Waydroid) 
 - ✅ Intel N150 optimization
 - ✅ AMD GPU support
 - ✅ Community script compatibility
-- ✅ VNC access via WayVNC (port 5900)
-- ✅ REST API for Home Assistant (port 8080)
-- ✅ Comprehensive documentation
+- ✅ VNC access via WayVNC (port 5900) with authentication
+- ✅ Enhanced REST API v2.0 with Bearer token authentication
+- ✅ Comprehensive health check and monitoring system
+- ✅ Automated backup and restore functionality
+- ✅ System update and upgrade automation
+- ✅ Performance optimization tools
+- ✅ Systemd service health checks and watchdogs
+- ✅ Real-time performance monitoring dashboard
+- ✅ Comprehensive error handling and logging
 
-### Recent Changes (Last 3 Commits)
+### Recent Changes (Latest Session - 2 Hours of Improvements)
+**Security Enhancements:**
+1. Fixed dangerous `source <(echo)` pattern in ct/waydroid-lxc.sh
+2. Added API authentication with Bearer tokens (API v2.0)
+3. Added VNC password protection
+4. Implemented input validation for package names and intents
+5. Added request size limits and timeout protection
+
+**New Features:**
+1. Health check system (scripts/health-check.sh) - 10-point comprehensive monitoring
+2. Backup/restore tool (scripts/backup-restore.sh) - Full data protection
+3. Update system (scripts/update-system.sh) - Automated updates with safety
+4. Performance optimizer (scripts/optimize-performance.sh) - System tuning
+5. Performance monitor (scripts/monitor-performance.sh) - Real-time dashboard
+6. Systemd watchdogs and health checks for all services
+
+**Code Quality:**
+1. Replaced unsafe `$STD` variable with `silent_exec()` function
+2. Added comprehensive error handling to install.sh
+3. Added curl timeouts and retry logic
+4. Improved logging throughout API and services
+5. Added resource limits to systemd services
+
+### Previous Changes
 1. **Initial implementation** - Full Waydroid LXC setup with GPU passthrough
 2. **Interactive installer** - GPU selection (Intel/AMD/NVIDIA), GAPPS option, privileged/unprivileged containers
 3. **Multi-GPU selection** - Detect multiple GPUs, allow device selection, community script integration
@@ -58,13 +87,18 @@ This project provides an automated installer for running Android (via Waydroid) 
 ```
 waydroid-proxmox/
 ├── ct/
-│   └── waydroid-lxc.sh          # Container setup (runs inside LXC)
+│   └── waydroid-lxc.sh          # Container setup (runs inside LXC) [ENHANCED]
 ├── install/
-│   └── install.sh               # Main installer (runs on Proxmox host)
+│   └── install.sh               # Main installer (runs on Proxmox host) [ENHANCED]
 ├── scripts/
 │   ├── helper-functions.sh      # Shared utility functions
 │   ├── configure-intel-n150.sh  # Intel GPU host configuration
-│   └── test-setup.sh            # Verification script
+│   ├── test-setup.sh            # Verification script
+│   ├── health-check.sh          # Comprehensive health monitoring [NEW]
+│   ├── backup-restore.sh        # Backup and restore tool [NEW]
+│   ├── update-system.sh         # System update automation [NEW]
+│   ├── optimize-performance.sh  # Performance tuning [NEW]
+│   └── monitor-performance.sh   # Real-time monitoring dashboard [NEW]
 ├── config/
 │   └── intel-n150.conf          # Intel N150 specific settings
 ├── docs/
@@ -127,12 +161,36 @@ LIBVA_DRIVER_NAME=radeonsi
 LIBGL_ALWAYS_SOFTWARE=1
 ```
 
-### 3. Home Assistant API (`waydroid-api.py`)
-**Endpoints:**
-- `GET /status` - Get Waydroid status
-- `GET /apps` - List installed apps
-- `POST /app/launch` - Launch app by package name
-- `POST /app/intent` - Send Android intent
+### 3. Home Assistant API v2.0 (`waydroid-api.py`)
+**Authentication:** Bearer token (auto-generated, stored in `/etc/waydroid-api/token`)
+
+**GET Endpoints:**
+- `/health` - Health check (no auth required)
+- `/status` - Get Waydroid status (requires auth)
+- `/version` - Get Waydroid and API versions (requires auth)
+- `/apps` - List installed apps with count (requires auth)
+
+**POST Endpoints:**
+- `/app/launch` - Launch app by package name (requires auth)
+- `/app/stop` - Force stop app (requires auth)
+- `/app/intent` - Send Android intent (requires auth)
+- `/container/restart` - Restart Waydroid container (requires auth)
+
+**Security Features:**
+- Input validation (package names, intents)
+- Request size limits (max 10KB)
+- Timeout protection (5-15s per operation)
+- Comprehensive logging to `/var/log/waydroid-api.log`
+- Rate limiting via connection tracking
+
+**Usage Example:**
+```bash
+# Get token
+TOKEN=$(cat /etc/waydroid-api/token)
+
+# Make authenticated request
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/status
+```
 
 ---
 
@@ -166,6 +224,83 @@ Before committing changes, test these scenarios:
 
 ---
 
+## 🛠️ New Tools and Scripts
+
+### Health Check System (`scripts/health-check.sh`)
+Comprehensive 10-point health monitoring system that checks:
+- System resources (CPU, memory, disk)
+- Kernel modules (binder, ashmem)
+- GPU devices and permissions
+- Waydroid installation and services
+- VNC and API servers
+- Network connectivity
+- Recent errors and logs
+
+**Usage:**
+```bash
+./scripts/health-check.sh          # Run health check
+crontab -e                          # Add to cron for automated monitoring
+*/10 * * * * /path/to/health-check.sh
+```
+
+### Backup and Restore (`scripts/backup-restore.sh`)
+Complete backup solution for Waydroid data:
+- Supports data-only and full backups
+- Automatic cleanup of old backups
+- Export/import functionality
+- Preserves configurations and apps
+
+**Usage:**
+```bash
+./scripts/backup-restore.sh backup --full    # Full backup including images
+./scripts/backup-restore.sh list             # List backups
+./scripts/backup-restore.sh restore <name>   # Restore from backup
+./scripts/backup-restore.sh export <name>    # Export to tar.gz
+```
+
+### System Update (`scripts/update-system.sh`)
+Safe automated update system:
+- Updates system packages
+- Updates Waydroid
+- Updates GPU drivers
+- Automatic backup before updates
+- Post-update health checks
+
+**Usage:**
+```bash
+./scripts/update-system.sh              # Full update
+./scripts/update-system.sh --dry-run    # Preview updates
+./scripts/update-system.sh --system-only # Only update packages
+```
+
+### Performance Optimization (`scripts/optimize-performance.sh`)
+System tuning for optimal performance:
+- Kernel parameter optimization
+- CPU governor configuration
+- I/O scheduler tuning
+- Memory and GPU optimizations
+- Waydroid property tuning
+
+**Usage:**
+```bash
+./scripts/optimize-performance.sh       # Apply all optimizations
+```
+
+### Performance Monitor (`scripts/monitor-performance.sh`)
+Real-time performance dashboard:
+- CPU, memory, disk usage
+- Service status monitoring
+- Network statistics
+- GPU usage (if available)
+- API and VNC monitoring
+
+**Usage:**
+```bash
+./scripts/monitor-performance.sh                # Live dashboard
+./scripts/monitor-performance.sh --once         # Single snapshot
+./scripts/monitor-performance.sh --interval 5   # Custom refresh
+```
+
 ## 🐛 Known Issues & Limitations
 
 ### Current Limitations
@@ -180,6 +315,14 @@ Before committing changes, test these scenarios:
 - **Multiple Displays**: Not tested with multi-monitor setups
 - **Audio**: Audio passthrough not yet implemented
 - **ARM Apps**: May need libhoudini for ARM translation on x86
+
+### Fixed in This Session
+- ✅ Command injection vulnerabilities in API
+- ✅ Unprotected VNC access
+- ✅ Missing error handling in installer
+- ✅ No backup/restore functionality
+- ✅ No health monitoring
+- ✅ No update mechanism
 
 ---
 
@@ -268,15 +411,17 @@ When adding features that should use community functions:
 - [ ] Audio passthrough (PulseAudio/PipeWire)
 - [ ] Clipboard sharing between host and Android
 - [ ] noVNC web interface (browser-based access)
-- [ ] Backup/restore scripts for Waydroid data
+- [✅] Backup/restore scripts for Waydroid data **COMPLETED**
 - [ ] ARM translation layer (libhoudini/libndk) integration
 
 ### Medium Priority
 - [ ] Multi-container support (multiple Android instances)
-- [ ] Performance monitoring dashboard
+- [✅] Performance monitoring dashboard **COMPLETED**
 - [ ] Automated app installation from config file
 - [ ] ADB over network auto-configuration
 - [ ] Container resource limits tuning guide
+- [✅] Health check and monitoring **COMPLETED**
+- [✅] Automated update system **COMPLETED**
 
 ### Low Priority
 - [ ] Custom Android builds (AOSP integration)
@@ -284,6 +429,18 @@ When adding features that should use community functions:
 - [ ] Camera passthrough
 - [ ] Sensor emulation
 - [ ] F-Droid integration option
+
+### Completed in This Session
+- [✅] API authentication and security
+- [✅] VNC password protection
+- [✅] Backup and restore functionality
+- [✅] Health check system
+- [✅] Performance monitoring
+- [✅] System update automation
+- [✅] Performance optimization tools
+- [✅] Systemd service watchdogs
+- [✅] Comprehensive error handling
+- [✅] Input validation and sanitization
 
 ---
 
