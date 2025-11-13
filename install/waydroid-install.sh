@@ -180,18 +180,16 @@ else
     export WLR_RENDERER_ALLOW_SOFTWARE=1
 fi
 
-# Start Sway compositor in headless mode
-echo "Starting Sway compositor..."
-export WLR_BACKENDS=headless
-export WLR_LIBINPUT_NO_DEVICES=1
-export SWAY_ALLOW_ROOT=1
-sway &
-SWAY_PID=$!
+# Start Weston compositor in headless mode (better for containers than Sway)
+echo "Starting Weston compositor..."
+# Weston headless backend configuration
+weston --backend=headless-backend.so --width=1920 --height=1080 &
+WESTON_PID=$!
 sleep 5
 
-# Verify Sway started
-if ! kill -0 $SWAY_PID 2>/dev/null; then
-    echo "ERROR: Sway failed to start"
+# Verify Weston started
+if ! kill -0 $WESTON_PID 2>/dev/null; then
+    echo "ERROR: Weston failed to start"
     exit 1
 fi
 
@@ -224,7 +222,7 @@ SESSION_PID=$!
 echo "========================================"
 echo "Waydroid started successfully!"
 echo "VNC: Port 5900"
-echo "Sway PID: $SWAY_PID"
+echo "Weston PID: $WESTON_PID"
 echo "WayVNC PID: $WAYVNC_PID"
 echo "Session PID: $SESSION_PID"
 echo "========================================"
@@ -232,8 +230,8 @@ echo "========================================"
 # Keep the script running and monitor child processes
 while true; do
     # Check if critical processes are still running
-    if ! kill -0 $SWAY_PID 2>/dev/null; then
-        echo "ERROR: Sway died, exiting..."
+    if ! kill -0 $WESTON_PID 2>/dev/null; then
+        echo "ERROR: Weston died, exiting..."
         exit 1
     fi
     if ! kill -0 $WAYVNC_PID 2>/dev/null; then
