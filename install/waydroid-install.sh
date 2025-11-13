@@ -5,13 +5,40 @@
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://github.com/iceteaSA/waydroid-proxmox
 
-source /dev/stdin <<<"$FUNCTIONS_FILE_PATH"
-color
-verb_ip6
-catch_errors
-setting_up_container
-network_check
-update_os
+# Try to source community-scripts functions if available
+if [ -n "$FUNCTIONS_FILE_PATH" ] && [ -f "$FUNCTIONS_FILE_PATH" ]; then
+    source /dev/stdin <<<"$FUNCTIONS_FILE_PATH"
+    color
+    verb_ip6
+    catch_errors
+    setting_up_container
+    network_check
+    update_os
+else
+    # Fallback: Define basic functions for standalone use
+    echo "WARNING: FUNCTIONS_FILE_PATH not available, using fallback functions"
+
+    # Color codes
+    BL="\e[36m"
+    RD="\e[01;31m"
+    GN="\e[1;92m"
+    YW="\e[1;93m"
+    CL="\e[m"
+    CM="${GN}✔${CL}"
+
+    # Basic message functions
+    msg_info() { echo -e "${BL}[INFO]${CL} $1"; }
+    msg_ok() { echo -e "${CM} $1"; }
+    msg_warn() { echo -e "${YW}[WARN]${CL} $1"; }
+    msg_error() { echo -e "${RD}[ERROR]${CL} $1" >&2; }
+
+    # STD redirection for silent execution
+    STD=""
+
+    # Update system
+    apt-get update >/dev/null 2>&1
+    apt-get -y upgrade >/dev/null 2>&1
+fi
 
 # Load environment variables set by wrapper
 if [ -f /tmp/waydroid-env.sh ]; then
@@ -30,7 +57,6 @@ $STD apt-get install -y \
     gnupg \
     ca-certificates \
     lsb-release \
-    software-properties-common \
     wget \
     unzip \
     wayland-protocols \
