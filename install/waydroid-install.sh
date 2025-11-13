@@ -272,12 +272,24 @@ echo "Starting WayVNC on port 5900 as $DISPLAY_USER..."
 # Use nohup to prevent SIGHUP when su exits
 WAYVNC_ENV="XDG_RUNTIME_DIR=$DISPLAY_XDG_RUNTIME_DIR WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
 nohup su -c "$WAYVNC_ENV wayvnc 0.0.0.0 5900" $DISPLAY_USER > /dev/null 2>&1 &
-WAYVNC_PID=$!
 sleep 3
 
-# Verify WayVNC started
-if ! kill -0 $WAYVNC_PID 2>/dev/null; then
-    echo "ERROR: WayVNC failed to start"
+# Verify WayVNC started by checking if port 5900 is listening
+# Note: We can't check PID because nohup exits immediately
+WAYVNC_RETRY=0
+WAYVNC_MAX_RETRIES=10
+WAYVNC_RUNNING=false
+while [ $WAYVNC_RETRY -lt $WAYVNC_MAX_RETRIES ]; do
+    if ss -tlnp | grep -q ':5900'; then
+        WAYVNC_RUNNING=true
+        break
+    fi
+    sleep 1
+    WAYVNC_RETRY=$((WAYVNC_RETRY + 1))
+done
+
+if [ "$WAYVNC_RUNNING" = "false" ]; then
+    echo "ERROR: WayVNC failed to start (port 5900 not listening)"
     echo "Checking WayVNC requirements:"
     echo "  WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
     echo "  Socket exists: $([ -S "$SOCKET_PATH" ] && echo 'yes' || echo 'no')"
@@ -316,7 +328,6 @@ echo "Waydroid started successfully!"
 echo "VNC: Port 5900"
 echo "Display User: $DISPLAY_USER"
 echo "Sway PID: $SWAY_PID"
-echo "WayVNC PID: $WAYVNC_PID"
 echo "Session PID: $SESSION_PID"
 echo "Wayland Socket: $SOCKET_PATH"
 echo "Root Access: $XDG_RUNTIME_DIR/$WAYLAND_DISPLAY (symlink)"
@@ -329,8 +340,8 @@ while true; do
         echo "ERROR: Sway compositor died, exiting..."
         exit 1
     fi
-    if ! kill -0 $WAYVNC_PID 2>/dev/null; then
-        echo "ERROR: WayVNC died, exiting..."
+    if ! ss -tlnp | grep -q ':5900'; then
+        echo "ERROR: WayVNC died (port 5900 not listening), exiting..."
         exit 1
     fi
 
