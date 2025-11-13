@@ -269,8 +269,9 @@ chmod 777 "$SOCKET_PATH"
 # Start WayVNC with authentication as waydroid user
 echo "Starting WayVNC on port 5900 as $DISPLAY_USER..."
 # WayVNC will connect to the Wayland socket via WAYLAND_DISPLAY environment variable
+# Use nohup to prevent SIGHUP when su exits
 WAYVNC_ENV="XDG_RUNTIME_DIR=$DISPLAY_XDG_RUNTIME_DIR WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
-su -c "$WAYVNC_ENV wayvnc 0.0.0.0 5900" $DISPLAY_USER &
+nohup su -c "$WAYVNC_ENV wayvnc 0.0.0.0 5900" $DISPLAY_USER > /dev/null 2>&1 &
 WAYVNC_PID=$!
 sleep 3
 
