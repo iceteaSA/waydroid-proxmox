@@ -121,7 +121,7 @@ echo -e "${BL}[7/10] VNC Server${CL}"
 check_component "WayVNC Installed" "command -v wayvnc" "yes"
 check_component "WayVNC Running" "pgrep -f wayvnc"
 check_component "VNC Port Open" "netstat -tuln | grep -q ':5900 '"
-check_component "VNC Config" "[ -f /root/.config/wayvnc/config ]"
+check_component "VNC Config" "[ -f /etc/wayvnc/config ]"
 echo ""
 
 # 8. API Server

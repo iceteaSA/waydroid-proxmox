@@ -132,29 +132,28 @@ msg_ok "Created waydroid user"
 
 msg_info "Setting up VNC"
 # Create VNC config for waydroid user
-mkdir -p /home/waydroid/.config/wayvnc
-chown -R waydroid:waydroid /home/waydroid/.config
+# Use /etc/wayvnc for system-wide configuration (FHS compliant)
+mkdir -p /etc/wayvnc
 
 # Generate VNC password using openssl (more reliable in LXC)
 VNC_PASSWORD=$(openssl rand -base64 12 | tr -d '/+=' | head -c 16)
-echo "$VNC_PASSWORD" > /home/waydroid/.config/wayvnc/password
-chmod 600 /home/waydroid/.config/wayvnc/password
-chown waydroid:waydroid /home/waydroid/.config/wayvnc/password
+echo "$VNC_PASSWORD" > /etc/wayvnc/password
+chmod 600 /etc/wayvnc/password
 
-cat > /home/waydroid/.config/wayvnc/config <<EOF
+cat > /etc/wayvnc/config <<EOF
 address=0.0.0.0
 port=5900
 enable_auth=true
 username=waydroid
-password_file=/home/waydroid/.config/wayvnc/password
+password_file=/etc/wayvnc/password
 max_rate=60
 EOF
-chown waydroid:waydroid /home/waydroid/.config/wayvnc/config
+chmod 644 /etc/wayvnc/config
 
-# Save password for user reference (keep in root for easy access)
+# Save password for user reference
 echo "$VNC_PASSWORD" > /root/vnc-password.txt
 chmod 600 /root/vnc-password.txt
-msg_ok "VNC Configured (password saved to /root/vnc-password.txt)"
+msg_ok "VNC Configured (Config: /etc/wayvnc/, Password: /root/vnc-password.txt)"
 
 msg_info "Creating Waydroid Startup Script"
 cat > /usr/local/bin/start-waydroid.sh <<'EOFSCRIPT'

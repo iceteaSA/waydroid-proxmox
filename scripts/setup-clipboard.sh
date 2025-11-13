@@ -861,7 +861,7 @@ configure_vnc_clipboard() {
     # WayVNC supports clipboard sharing natively through the VNC protocol
     # We just need to ensure wl-clipboard is available
 
-    local wayvnc_config="/root/.config/wayvnc/config"
+    local wayvnc_config="/etc/wayvnc/config"
 
     if [ -f "$wayvnc_config" ]; then
         # Check if clipboard settings exist

@@ -40,7 +40,7 @@ ENABLE_RSA_AES=false
 MAX_FPS=60
 JPEG_QUALITY=7
 ENABLE_MONITORING=false
-WAYVNC_CONFIG_DIR="/root/.config/wayvnc"
+WAYVNC_CONFIG_DIR="/etc/wayvnc"
 WAYVNC_CONFIG="$WAYVNC_CONFIG_DIR/config"
 WAYVNC_LOG="/var/log/wayvnc.log"
 NOVNC_DIR="/opt/noVNC"
@@ -373,7 +373,7 @@ Examples:
 EOF
 }
 
-CONFIG_FILE="/root/.config/wayvnc/config"
+CONFIG_FILE="/etc/wayvnc/config"
 
 show_settings() {
     if [ ! -f "$CONFIG_FILE" ]; then
@@ -618,14 +618,14 @@ echo ""
 
 # Configuration
 echo "Configuration:"
-if [ -f /root/.config/wayvnc/config ]; then
-    echo "  Port: $(grep '^port=' /root/.config/wayvnc/config | cut -d= -f2)"
-    echo "  Max Rate: $(grep '^max_rate=' /root/.config/wayvnc/config | cut -d= -f2)"
-    echo "  Auth: $(grep '^enable_auth=' /root/.config/wayvnc/config | cut -d= -f2)"
-    if grep -q '^private_key_file=' /root/.config/wayvnc/config; then
+if [ -f /etc/wayvnc/config ]; then
+    echo "  Port: $(grep '^port=' /etc/wayvnc/config | cut -d= -f2)"
+    echo "  Max Rate: $(grep '^max_rate=' /etc/wayvnc/config | cut -d= -f2)"
+    echo "  Auth: $(grep '^enable_auth=' /etc/wayvnc/config | cut -d= -f2)"
+    if grep -q '^private_key_file=' /etc/wayvnc/config; then
         echo "  TLS: Enabled"
     fi
-    if grep -q '^rsa_private_key_file=' /root/.config/wayvnc/config; then
+    if grep -q '^rsa_private_key_file=' /etc/wayvnc/config; then
         echo "  RSA-AES: Enabled"
     fi
 fi

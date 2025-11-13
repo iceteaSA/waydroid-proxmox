@@ -122,9 +122,9 @@ EOF
         cp -a "$WAYDROID_CONFIG" "$backup_path/config"
     fi
 
-    if [ -f /root/.config/wayvnc/config ]; then
+    if [ -f /etc/wayvnc/config ]; then
         mkdir -p "$backup_path/wayvnc"
-        cp -a /root/.config/wayvnc "$backup_path/wayvnc/"
+        cp -a /etc/wayvnc "$backup_path/wayvnc/"
     fi
 
     if [ -f /root/vnc-password.txt ]; then
@@ -250,8 +250,10 @@ restore_backup() {
     fi
 
     if [ -d "$backup_path/wayvnc/wayvnc" ]; then
-        mkdir -p /root/.config/wayvnc
-        cp -a "$backup_path/wayvnc/wayvnc/"* /root/.config/wayvnc/
+        mkdir -p /etc/wayvnc
+        cp -a "$backup_path/wayvnc/wayvnc/"* /etc/wayvnc/
+        chmod 644 /etc/wayvnc/config
+        chmod 600 /etc/wayvnc/password 2>/dev/null || true
     fi
 
     if [ -f "$backup_path/vnc-password.txt" ]; then

@@ -636,19 +636,19 @@ test_vnc_server() {
     # VNC Security Check
     start_time=$(get_timestamp_ms)
     timing=$(($(get_timestamp_ms) - start_time))
-    if [ -f /root/.config/wayvnc/config ]; then
-        if grep -q "enable_auth=true" /root/.config/wayvnc/config 2>/dev/null; then
+    if [ -f /etc/wayvnc/config ]; then
+        if grep -q "enable_auth=true" /etc/wayvnc/config 2>/dev/null; then
             record_test "$category" "VNC Security" "pass" "Authentication enabled" \
                 "VNC requires authentication" "" "$timing"
         else
             record_test "$category" "VNC Security" "warn" "Authentication may be disabled" \
                 "VNC config exists but auth status unclear" \
-                "Enable auth in /root/.config/wayvnc/config" "$timing"
+                "Enable auth in /etc/wayvnc/config" "$timing"
         fi
     else
         record_test "$category" "VNC Security" "warn" "No config file found" \
             "Cannot verify VNC security settings" \
-            "Create config at /root/.config/wayvnc/config" "$timing"
+            "Create config at /etc/wayvnc/config" "$timing"
     fi
 }
 

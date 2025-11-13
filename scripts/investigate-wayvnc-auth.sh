@@ -26,8 +26,8 @@ echo "Checking /home/waydroid/.config/wayvnc/:"
 ls -la /home/waydroid/.config/wayvnc/ 2>/dev/null || echo "  Directory doesn't exist"
 
 echo ""
-echo "Checking /root/.config/wayvnc/:"
-ls -la /root/.config/wayvnc/ 2>/dev/null || echo "  Directory doesn't exist"
+echo "Checking /etc/wayvnc/:"
+ls -la /etc/wayvnc/ 2>/dev/null || echo "  Directory doesn't exist"
 
 echo ""
 echo "Checking /etc/wayvnc/:"
@@ -161,7 +161,7 @@ echo ""
 echo "=== STEP 11: Check for TLS/Security Settings ==="
 pct exec "$CTID" -- bash <<'INNER'
 echo "Checking for TLS-related files:"
-find /home/waydroid/.config/wayvnc /root/.config/wayvnc /etc/wayvnc -name "*.pem" -o -name "*.crt" -o -name "*.key" 2>/dev/null || echo "  No TLS files found"
+find /home/waydroid/.config/wayvnc /etc/wayvnc /etc/wayvnc -name "*.pem" -o -name "*.crt" -o -name "*.key" 2>/dev/null || echo "  No TLS files found"
 INNER
 echo ""
 

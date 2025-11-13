@@ -551,10 +551,10 @@ create_backup() {
     fi
 
     # Backup VNC configuration
-    if [ -d /root/.config/wayvnc ]; then
+    if [ -d /etc/wayvnc ]; then
         msg_info "Backing up VNC configuration..."
         mkdir -p "$BACKUP_DIR/config"
-        cp -a /root/.config/wayvnc "$BACKUP_DIR/config/"
+        cp -a /etc/wayvnc "$BACKUP_DIR/config/"
         log "Backed up VNC configuration"
     fi
 
@@ -838,14 +838,14 @@ apply_security_patches() {
 
     # 1. Check VNC binding configuration
     msg_info "Checking VNC security configuration..."
-    if [ -f /root/.config/wayvnc/config ]; then
-        if grep -q "address=0.0.0.0" /root/.config/wayvnc/config 2>/dev/null; then
+    if [ -f /etc/wayvnc/config ]; then
+        if grep -q "address=0.0.0.0" /etc/wayvnc/config 2>/dev/null; then
             msg_warn "VNC is binding to all interfaces (ensure firewall is configured)"
             msg_info "Remote access enabled - verify iptables rate limiting is active"
             log "VNC configured for remote access with authentication"
         else
             msg_ok "VNC binding: Configured for localhost access only"
-            msg_info "For remote access, change address to 0.0.0.0 in /root/.config/wayvnc/config"
+            msg_info "For remote access, change address to 0.0.0.0 in /etc/wayvnc/config"
         fi
     else
         msg_warn "VNC config not found"

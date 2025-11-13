@@ -456,30 +456,31 @@ else
 fi
 
 msg_info "Creating WayVNC Configuration"
-mkdir -p /root/.config/wayvnc
+# Use /etc/wayvnc for system-wide configuration (FHS compliant)
+mkdir -p /etc/wayvnc
 
 # Generate a random VNC password
 VNC_PASSWORD=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 16)
-echo "$VNC_PASSWORD" > /root/.config/wayvnc/password
-chmod 600 /root/.config/wayvnc/password
+echo "$VNC_PASSWORD" > /etc/wayvnc/password
+chmod 600 /etc/wayvnc/password
 
-cat > /root/.config/wayvnc/config <<EOF
+cat > /etc/wayvnc/config <<EOF
 address=0.0.0.0
 port=5900
 enable_auth=true
 username=waydroid
-password_file=/root/.config/wayvnc/password
+password_file=/etc/wayvnc/password
 # Performance settings
 max_rate=60
 # Security settings
 require_encryption=true
 EOF
 
-# Also save password to a retrievable location for the user
+# Save password to user-accessible location for reference
 echo "$VNC_PASSWORD" > /root/vnc-password.txt
 chmod 600 /root/vnc-password.txt
 
-msg_ok "WayVNC Configuration Created (Password: /root/vnc-password.txt)"
+msg_ok "WayVNC Configuration Created (Config: /etc/wayvnc/, Password: /root/vnc-password.txt)"
 
 msg_info "Creating Startup Scripts"
 cat > /usr/local/bin/start-waydroid.sh <<EOFSCRIPT
