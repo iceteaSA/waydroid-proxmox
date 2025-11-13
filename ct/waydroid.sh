@@ -129,7 +129,7 @@ ${BL}OPTIONS:${CL}
     --cpu <cores>         CPU cores (default: 2)
     --ram <mb>            RAM in MB (default: 2048)
     --storage <pool>      Storage pool (default: auto-detect)
-                          Preference: local-lxc > local > local-btrfs > local-zfs
+                          Preference: local-lxc > local-btrfs > local-zfs > local
     --bridge <name>       Network bridge (default: vmbr0)
     --privileged          Use privileged container (default, for GPU)
     --unprivileged        Use unprivileged container (software rendering only)
@@ -218,8 +218,9 @@ detect_storage() {
         return
     fi
 
-    # Preference order for storage
-    local preferred_storage=("local-lxc" "local" "local-btrfs" "local-zfs")
+    # Preference order for storage (prefer specialized container storage)
+    # Order: dedicated container storage > modern filesystems > fallback directory storage
+    local preferred_storage=("local-lxc" "local-btrfs" "local-zfs" "local")
 
     # Get all available storage that supports containers (type: dir, lvm, lvmthin, zfspool, btrfs)
     mapfile -t available_storage < <(pvesm status 2>/dev/null | awk 'NR>1 && /^[a-zA-Z]/ && ($2 ~ /dir|lvm|lvmthin|zfspool|btrfs/) {print $1}')
@@ -572,17 +573,64 @@ create_container() {
         msg_info "Downloading Debian 12 template (this may take a few minutes)..."
 
         # Update template list
+        msg_info "Updating template list..."
         if [ "$VERBOSE" = "yes" ]; then
-            pveam update
+            if ! pveam update; then
+                msg_error "Failed to update template list"
+                msg_info "Troubleshooting:"
+                msg_info "  - Check internet connectivity: ping -c 3 download.proxmox.com"
+                msg_info "  - Check DNS resolution: nslookup download.proxmox.com"
+                msg_info "  - Try manually: pveam update"
+                return 1
+            fi
         else
-            pveam update &>/dev/null
+            if ! pveam update &>/dev/null; then
+                msg_error "Failed to update template list"
+                msg_info "Troubleshooting:"
+                msg_info "  - Check internet connectivity: ping -c 3 download.proxmox.com"
+                msg_info "  - Check DNS resolution: nslookup download.proxmox.com"
+                msg_info "  - Try manually with verbose output: pveam update"
+                return 1
+            fi
         fi
+        msg_ok "Template list updated"
 
         # Download template with progress visible
-        echo -e "${BL}[PROGRESS]${CL} Downloading from repository..."
-        pveam download "$STORAGE" "${OS_TEMPLATE}_amd64.tar.zst"
+        echo ""
+        echo -e "${BL}[DOWNLOAD]${CL} Fetching Debian 12 template from repository..."
+        echo -e "${BL}[INFO]${CL} This download is approximately 130-150 MB and may take several minutes"
+        echo ""
 
-        msg_ok "Template downloaded"
+        if ! pveam download "$STORAGE" "${OS_TEMPLATE}_amd64.tar.zst"; then
+            echo ""
+            msg_error "Template download failed"
+            msg_info "Troubleshooting steps:"
+            msg_info "  1. Check internet connectivity:"
+            msg_info "     ping -c 3 download.proxmox.com"
+            msg_info "  2. Check available disk space:"
+            msg_info "     df -h /var/lib/vz/template/cache"
+            msg_info "  3. Verify storage configuration:"
+            msg_info "     pvesm status | grep '$STORAGE'"
+            msg_info "  4. Check for existing partial downloads:"
+            msg_info "     ls -lh /var/lib/vz/template/cache/"
+            msg_info "  5. Try downloading manually:"
+            msg_info "     pveam download $STORAGE ${OS_TEMPLATE}_amd64.tar.zst"
+            msg_info "  6. Check Proxmox logs:"
+            msg_info "     journalctl -xe | grep pveam"
+            return 1
+        fi
+
+        echo ""
+        msg_ok "Template downloaded successfully"
+
+        # Verify the downloaded template exists
+        if [ ! -f "$template_path" ]; then
+            msg_error "Template file not found after download: $template_path"
+            msg_info "This may indicate a storage or permission issue"
+            return 1
+        fi
+    else
+        msg_info "Template already exists, skipping download"
     fi
 
     # Create container
