@@ -117,13 +117,17 @@ EOF
     msg_ok "Configured GPU Access"
 fi
 
-msg_info "Creating waydroid user for compositor"
-# Create system user for running the compositor (Sway won't run as root)
+msg_info "Creating waydroid user"
+# Create system user for running compositor and waydroid (Sway won't run as root)
 if ! id -u waydroid >/dev/null 2>&1; then
     useradd -r -s /bin/bash -d /home/waydroid -m waydroid
 fi
 # Add to video/render groups for GPU access
 usermod -aG video,render waydroid
+
+# Give waydroid user access to /var/lib/waydroid
+mkdir -p /var/lib/waydroid
+chown -R waydroid:waydroid /var/lib/waydroid
 msg_ok "Created waydroid user"
 
 msg_info "Setting up VNC"
@@ -276,20 +280,23 @@ echo "WayVNC started successfully and connected to Sway"
 if [ ! -d "/var/lib/waydroid/overlay" ]; then
     echo "Initializing Waydroid (downloading Android images, ~450MB)..."
     echo "This will take 5-10 minutes on first run..."
+    # Run waydroid init as waydroid user
+    INIT_ENV="XDG_RUNTIME_DIR=$DISPLAY_XDG_RUNTIME_DIR WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
     if [ "${USE_GAPPS:-yes}" = "yes" ]; then
-        waydroid init -s GAPPS -f
+        su -c "$INIT_ENV waydroid init -s GAPPS -f" $DISPLAY_USER
     else
-        waydroid init -f
+        su -c "$INIT_ENV waydroid init -f" $DISPLAY_USER
     fi
 fi
 
-# Start Waydroid container
-echo "Starting Waydroid container..."
-waydroid container start
+# Start Waydroid container as waydroid user
+echo "Starting Waydroid container as $DISPLAY_USER..."
+WAYDROID_ENV="XDG_RUNTIME_DIR=$DISPLAY_XDG_RUNTIME_DIR WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
+su -c "$WAYDROID_ENV waydroid container start" $DISPLAY_USER
 
-# Start Waydroid session
-echo "Starting Waydroid session..."
-waydroid session start &
+# Start Waydroid session as waydroid user
+echo "Starting Waydroid session as $DISPLAY_USER..."
+su -c "$WAYDROID_ENV waydroid session start" $DISPLAY_USER &
 SESSION_PID=$!
 
 echo "========================================"
