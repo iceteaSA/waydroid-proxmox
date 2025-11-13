@@ -232,7 +232,7 @@ base_settings() {
     var_os="debian"
   fi
   if [ -z "$var_version" ]; then
-    var_version="12"
+    var_version="13"
   fi
 }
 
