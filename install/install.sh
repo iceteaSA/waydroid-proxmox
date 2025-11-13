@@ -53,7 +53,7 @@ waydroid_custom_settings() {
     if [ "$CONTAINER_TYPE" = "2" ]; then
         var_unprivileged="1"
         SOFTWARE_RENDERING=1
-        msg_warn "Unprivileged container selected - will use software rendering"
+        echo -e "${YW}→ Unprivileged container selected - will use software rendering${CL}"
         echo ""
     else
         var_unprivileged="0"
@@ -72,24 +72,24 @@ waydroid_custom_settings() {
         case $GPU_CHOICE in
             1)
                 GPU_TYPE="intel"
-                msg_info "Intel GPU selected"
+                echo -e "${GN}→ Intel GPU selected${CL}"
                 ;;
             2)
                 GPU_TYPE="amd"
-                msg_info "AMD GPU selected"
+                echo -e "${GN}→ AMD GPU selected${CL}"
                 ;;
             3)
                 GPU_TYPE="nvidia"
                 SOFTWARE_RENDERING=1
-                msg_warn "NVIDIA selected - using software rendering (GPU passthrough not supported)"
+                echo -e "${YW}→ NVIDIA selected - using software rendering (GPU passthrough not supported)${CL}"
                 ;;
             4)
                 GPU_TYPE="software"
                 SOFTWARE_RENDERING=1
-                msg_info "Software rendering selected"
+                echo -e "${GN}→ Software rendering selected${CL}"
                 ;;
             *)
-                msg_error "Invalid choice, defaulting to Intel"
+                echo -e "${RD}→ Invalid choice, defaulting to Intel${CL}"
                 GPU_TYPE="intel"
                 ;;
         esac
@@ -100,21 +100,21 @@ waydroid_custom_settings() {
 
     # Detect GPU if hardware acceleration selected
     if [ "$SOFTWARE_RENDERING" = "0" ]; then
-        msg_info "Detecting ${GPU_TYPE^^} GPU..."
+        echo -e "${BL}Detecting ${GPU_TYPE^^} GPU...${CL}"
 
         case $GPU_TYPE in
             intel)
                 if lspci | grep -i "VGA.*Intel" &> /dev/null; then
-                    msg_ok "Intel GPU detected"
+                    echo -e "${CM} Intel GPU detected"
                     lspci | grep -i "VGA.*Intel"
                 else
-                    msg_error "Intel GPU not detected"
+                    echo -e "${CROSS} Intel GPU not detected"
                     read -p "Continue with software rendering? (y/N): " -n 1 -r
                     echo
                     if [[ $REPLY =~ ^[Yy]$ ]]; then
                         SOFTWARE_RENDERING=1
                         GPU_TYPE="software"
-                        msg_warn "Switched to software rendering"
+                        echo -e "${YW}→ Switched to software rendering${CL}"
                     else
                         exit 1
                     fi
@@ -122,16 +122,16 @@ waydroid_custom_settings() {
                 ;;
             amd)
                 if lspci | grep -i "VGA.*AMD\|VGA.*Radeon" &> /dev/null; then
-                    msg_ok "AMD GPU detected"
+                    echo -e "${CM} AMD GPU detected"
                     lspci | grep -i "VGA.*AMD\|VGA.*Radeon"
                 else
-                    msg_error "AMD GPU not detected"
+                    echo -e "${CROSS} AMD GPU not detected"
                     read -p "Continue with software rendering? (y/N): " -n 1 -r
                     echo
                     if [[ $REPLY =~ ^[Yy]$ ]]; then
                         SOFTWARE_RENDERING=1
                         GPU_TYPE="software"
-                        msg_warn "Switched to software rendering"
+                        echo -e "${YW}→ Switched to software rendering${CL}"
                     else
                         exit 1
                     fi
@@ -143,7 +143,7 @@ waydroid_custom_settings() {
 
     # Detect and select GPU devices if hardware acceleration
     if [ "$SOFTWARE_RENDERING" = "0" ]; then
-        msg_info "Detecting GPU devices..."
+        echo -e "${BL}Detecting GPU devices...${CL}"
 
         if [ -d /dev/dri ]; then
             # Detect all card and renderD devices
@@ -151,7 +151,7 @@ waydroid_custom_settings() {
             mapfile -t RENDERS < <(ls /dev/dri/renderD* 2>/dev/null | sort)
 
             if [ ${#CARDS[@]} -eq 0 ] && [ ${#RENDERS[@]} -eq 0 ]; then
-                msg_warn "No GPU devices found in /dev/dri/"
+                echo -e "${YW}No GPU devices found in /dev/dri/${CL}"
                 read -p "Continue with software rendering? (y/N): " -n 1 -r
                 echo
                 if [[ $REPLY =~ ^[Yy]$ ]]; then
@@ -161,7 +161,7 @@ waydroid_custom_settings() {
                     exit 1
                 fi
             else
-                msg_ok "Found GPU devices"
+                echo -e "${CM} Found GPU devices"
 
                 # Select card device if multiple available
                 if [ ${#CARDS[@]} -gt 1 ]; then
@@ -186,17 +186,17 @@ waydroid_custom_settings() {
 
                     if ! [[ "$CARD_CHOICE" =~ ^[0-9]+$ ]]; then
                         GPU_DEVICE="${CARDS[0]}"
-                        msg_warn "Invalid input, using: $GPU_DEVICE"
+                        echo -e "${YW}→ Invalid input, using: $GPU_DEVICE${CL}"
                     elif [ "$CARD_CHOICE" -ge 1 ] && [ "$CARD_CHOICE" -le ${#CARDS[@]} ]; then
                         GPU_DEVICE="${CARDS[$((CARD_CHOICE-1))]}"
-                        msg_ok "Selected: $GPU_DEVICE"
+                        echo -e "${GN}→ Selected: $GPU_DEVICE${CL}"
                     else
                         GPU_DEVICE="${CARDS[0]}"
-                        msg_warn "Invalid choice, using: $GPU_DEVICE"
+                        echo -e "${YW}→ Invalid choice, using: $GPU_DEVICE${CL}"
                     fi
                 elif [ ${#CARDS[@]} -eq 1 ]; then
                     GPU_DEVICE="${CARDS[0]}"
-                    msg_ok "Using card device: $GPU_DEVICE"
+                    echo -e "${GN}→ Using card device: $GPU_DEVICE${CL}"
                 fi
 
                 # Select render node if multiple available
@@ -211,23 +211,23 @@ waydroid_custom_settings() {
 
                     if ! [[ "$RENDER_CHOICE" =~ ^[0-9]+$ ]]; then
                         RENDER_NODE="${RENDERS[0]}"
-                        msg_warn "Invalid input, using: $RENDER_NODE"
+                        echo -e "${YW}→ Invalid input, using: $RENDER_NODE${CL}"
                     elif [ "$RENDER_CHOICE" -ge 1 ] && [ "$RENDER_CHOICE" -le ${#RENDERS[@]} ]; then
                         RENDER_NODE="${RENDERS[$((RENDER_CHOICE-1))]}"
-                        msg_ok "Selected: $RENDER_NODE"
+                        echo -e "${GN}→ Selected: $RENDER_NODE${CL}"
                     else
                         RENDER_NODE="${RENDERS[0]}"
-                        msg_warn "Invalid choice, using: $RENDER_NODE"
+                        echo -e "${YW}→ Invalid choice, using: $RENDER_NODE${CL}"
                     fi
                 elif [ ${#RENDERS[@]} -eq 1 ]; then
                     RENDER_NODE="${RENDERS[0]}"
-                    msg_ok "Using render node: $RENDER_NODE"
+                    echo -e "${GN}→ Using render node: $RENDER_NODE${CL}"
                 fi
 
                 echo ""
             fi
         else
-            msg_warn "/dev/dri/ directory not found"
+            echo -e "${YW}→ /dev/dri/ directory not found${CL}"
             SOFTWARE_RENDERING=1
             GPU_TYPE="software"
         fi
@@ -241,10 +241,10 @@ waydroid_custom_settings() {
 
     if [[ $GAPPS_CHOICE =~ ^[Nn]$ ]]; then
         USE_GAPPS="no"
-        msg_info "Waydroid will be installed without GAPPS"
+        echo -e "${YW}→ Waydroid will be installed without GAPPS${CL}"
     else
         USE_GAPPS="yes"
-        msg_info "Waydroid will be installed with GAPPS (Google Play Store)"
+        echo -e "${GN}→ Waydroid will be installed with GAPPS (Google Play Store)${CL}"
     fi
     echo ""
 
