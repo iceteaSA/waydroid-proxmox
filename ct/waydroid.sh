@@ -21,6 +21,10 @@ variables
 color
 catch_errors
 
+# Version check (for debugging)
+SCRIPT_VERSION="2.0-community"
+echo -e "${GN}Script Version: ${SCRIPT_VERSION}${CL}\n"
+
 # GPU Configuration Variables
 GPU_TYPE="${GPU_TYPE:-intel}"
 SOFTWARE_RENDERING="${SOFTWARE_RENDERING:-0}"
