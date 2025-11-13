@@ -204,6 +204,15 @@ start
 build_container
 description
 
+# Override: Use our install script instead of community-scripts repo
+# Since we're not merged into community-scripts yet, we need to fetch from our repo
+msg_info "Installing Waydroid (using iceteaSA/waydroid-proxmox repository)"
+lxc-attach -n "$CTID" -- bash -c "$(curl -fsSL https://raw.githubusercontent.com/iceteaSA/waydroid-proxmox/claude/fix-install-spawn-agent-011CV5K7wLiBqwKQTXuuxeCx/install/waydroid-install.sh)" || {
+    msg_error "Installation script failed"
+    exit 1
+}
+msg_ok "Waydroid installation completed"
+
 # Post-creation configuration
 msg_info "Configuring GPU passthrough"
 configure_gpu_passthrough
