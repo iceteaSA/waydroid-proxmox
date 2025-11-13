@@ -101,42 +101,8 @@ interactive_prompts() {
 
     if [[ $GAPPS_CHOICE =~ ^[Nn]$ ]]; then
         USE_GAPPS="no"
-        msg_info "Will install without GAPPS"
     else
         USE_GAPPS="yes"
-        msg_info "Will install with GAPPS"
-    fi
-    echo ""
-}
-
-# Show installation summary
-show_summary() {
-    echo ""
-    echo -e "${GN}═══════════════════════════════════════════════════════════════════════════${CL}"
-    echo -e "${GN}  Installation Summary${CL}"
-    echo -e "${GN}═══════════════════════════════════════════════════════════════════════════${CL}"
-    echo -e "${BL}Container:${CL}"
-    echo -e "  CTID: ${GN}${CTID}${CL}"
-    echo -e "  Type: ${GN}$([ "$var_unprivileged" = "1" ] && echo "Unprivileged" || echo "Privileged")${CL}"
-    echo -e "  Storage: ${GN}${STORAGE}${CL}"
-    echo -e "  Cores: ${GN}${var_cpu}${CL}"
-    echo -e "  RAM: ${GN}${var_ram}MB${CL}"
-    echo -e "  Disk: ${GN}${var_disk}GB${CL}"
-    echo -e "${BL}GPU:${CL}"
-    echo -e "  Type: ${GN}${GPU_TYPE}${CL}"
-    echo -e "  Rendering: ${GN}$([ "$SOFTWARE_RENDERING" = "1" ] && echo "Software" || echo "Hardware Accelerated")${CL}"
-    [ -n "$GPU_DEVICE" ] && echo -e "  Device: ${GN}${GPU_DEVICE}${CL}"
-    [ -n "$RENDER_NODE" ] && echo -e "  Render: ${GN}${RENDER_NODE}${CL}"
-    echo -e "${BL}Android:${CL}"
-    echo -e "  GAPPS: ${GN}${USE_GAPPS}${CL}"
-    echo -e "${GN}═══════════════════════════════════════════════════════════════════════════${CL}"
-    echo ""
-
-    read -r -p "Continue with installation? [Y/n]: " CONFIRM
-    CONFIRM=${CONFIRM:-y}
-    if [[ ! $CONFIRM =~ ^[Yy]$ ]]; then
-        msg_error "Installation cancelled by user"
-        exit 0
     fi
 }
 
@@ -215,18 +181,30 @@ function update_script() {
     exit
 }
 
-# Main execution flow
+# Main execution flow - detect GPU first
 detect_gpu
 interactive_prompts
-show_summary
 
+# Show configuration summary before starting
+echo ""
+echo -e "${BL}Configuration:${CL}"
+echo -e "  GPU Type: ${GN}${GPU_TYPE}${CL}"
+echo -e "  Rendering: ${GN}$([ "$SOFTWARE_RENDERING" = "1" ] && echo "Software" || echo "Hardware Accelerated")${CL}"
+[ -n "$GPU_DEVICE" ] && echo -e "  GPU Device: ${GN}${GPU_DEVICE}${CL}"
+[ -n "$RENDER_NODE" ] && echo -e "  Render Node: ${GN}${RENDER_NODE}${CL}"
+echo -e "  Google Apps: ${GN}${USE_GAPPS}${CL}"
+echo ""
+
+# Let build.func handle container setup interactively
 start
 build_container
 description
 
 # Post-creation configuration
+msg_info "Configuring GPU passthrough"
 configure_gpu_passthrough
 setup_host_modules
+msg_ok "GPU configuration complete"
 
 # Pass environment variables to container for installation
 msg_info "Configuring container environment"
