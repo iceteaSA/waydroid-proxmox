@@ -1,0 +1,77 @@
+{
+  "name": "Waydroid",
+  "slug": "waydroid",
+  "categories": [
+    1,
+    16
+  ],
+  "date_created": "2024-11-13",
+  "type": "ct",
+  "updateable": true,
+  "privileged": true,
+  "interface_port": 5900,
+  "documentation": "https://github.com/iceteaSA/waydroid-proxmox/blob/main/ct/README.md",
+  "website": "https://waydro.id",
+  "logo": "https://cdn.jsdelivr.net/gh/iceteaSA/waydroid-proxmox@main/docs/images/logo.png",
+  "config_path": "/root/vnc-password.txt",
+  "description": "Waydroid is a container-based platform for running Android applications on Linux systems. This implementation provides full GPU acceleration support (Intel, AMD, NVIDIA) with hardware-accelerated rendering, VNC remote access for Android desktop, Home Assistant REST API integration, clipboard sharing, audio passthrough, and optional Google Play Store integration. Perfect for smart home automation, controlling Android-only IoT devices, running security camera applications, or any use case requiring Android application execution on Proxmox VE.",
+  "install_methods": [
+    {
+      "type": "default",
+      "script": "ct/waydroid.sh",
+      "resources": {
+        "cpu": 2,
+        "ram": 2048,
+        "hdd": 16,
+        "os": "debian",
+        "version": "12"
+      }
+    }
+  ],
+  "default_credentials": {
+    "username": "waydroid",
+    "password": "Stored in /root/vnc-password.txt"
+  },
+  "notes": [
+    {
+      "text": "Access Android via VNC: Connect to <container-ip>:5900 using your VNC client with credentials displayed during installation",
+      "type": "info"
+    },
+    {
+      "text": "GPU Acceleration: Supports Intel, AMD, and NVIDIA GPUs with automatic detection. Software rendering available for unprivileged containers",
+      "type": "info"
+    },
+    {
+      "text": "Google Play Store: Optional installation of GAPPS (Google Apps) available during setup",
+      "type": "info"
+    },
+    {
+      "text": "Home Assistant Integration: REST API available at http://<container-ip>:8080 with authentication token saved to /etc/waydroid-api/token",
+      "type": "info"
+    },
+    {
+      "text": "First Boot: Container startup takes 2-3 minutes while Android initializes. Monitor progress via container logs",
+      "type": "info"
+    },
+    {
+      "text": "Clipboard Sharing: Seamless clipboard integration between host and Android container for copy-paste operations",
+      "type": "info"
+    },
+    {
+      "text": "Audio Support: Automatic PulseAudio/PipeWire audio passthrough enables sound from Android applications",
+      "type": "info"
+    },
+    {
+      "text": "Update Capability: Re-run installation script with --update flag to update existing Waydroid installations without data loss",
+      "type": "info"
+    },
+    {
+      "text": "Requires kernel modules: binder_linux and ashmem_linux are auto-loaded during installation",
+      "type": "warning"
+    },
+    {
+      "text": "Privileged Container: GPU acceleration requires privileged container. Use unprivileged mode with --unprivileged flag for software rendering only",
+      "type": "warning"
+    }
+  ]
+}
