@@ -31,7 +31,7 @@ Get Android running on Proxmox in 5, 10, or 30 minutes depending on your needs.
 ssh root@your-proxmox-ip
 
 # 2. Clone the repository
-cd /root
+cd /tmp
 git clone https://github.com/iceteaSA/waydroid-proxmox.git
 cd waydroid-proxmox
 
@@ -85,7 +85,7 @@ pct exec <CTID> -- ip addr show eth0 | grep inet
 ```bash
 # SSH to Proxmox host
 ssh root@your-proxmox-ip
-cd /root/waydroid-proxmox
+cd /tmp/waydroid-proxmox
 
 # Check if you have Intel GPU
 lspci | grep -i "VGA.*Intel"
@@ -102,7 +102,7 @@ Wait for Proxmox to restart, then SSH back in.
 #### Step 2: Install Container (5 minutes)
 
 ```bash
-cd /root/waydroid-proxmox
+cd /tmp/waydroid-proxmox
 
 # Run installer
 ./install/install.sh
@@ -192,7 +192,7 @@ waydroid status
 ssh root@your-proxmox-ip
 
 # Clone repository
-cd /root
+cd /tmp
 git clone https://github.com/iceteaSA/waydroid-proxmox.git
 cd waydroid-proxmox
 chmod +x install/install.sh scripts/*.sh
@@ -208,7 +208,7 @@ lspci | grep -i "VGA.*Intel" && ./scripts/configure-intel-n150.sh
 #### Step 2: Install Waydroid (10 minutes)
 
 ```bash
-cd /root/waydroid-proxmox
+cd /tmp/waydroid-proxmox
 ./install/install.sh
 ```
 
@@ -981,7 +981,7 @@ pct stop <CTID>
 pct destroy <CTID>
 
 # Reinstall from scratch
-cd /root/waydroid-proxmox
+cd /tmp/waydroid-proxmox
 ./install/install.sh
 ```
 
