@@ -81,7 +81,7 @@ detect_gpu() {
         GPU_TYPE="nvidia"
         SOFTWARE_RENDERING=1
         msg_warn "NVIDIA GPU detected - using software rendering"
-        msg_info "Hardware acceleration not available for NVIDIA with Waydroid"
+        echo -e "  ${YW}Note: Hardware acceleration not available for NVIDIA with Waydroid${CL}"
 
     # No GPU or unknown
     else
