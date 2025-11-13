@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func)
+# Use local build.func with our custom install script URL
+source <(curl -fsSL https://raw.githubusercontent.com/iceteaSA/waydroid-proxmox/claude/fix-install-spawn-agent-011CV5K7wLiBqwKQTXuuxeCx/misc/build.func)
 # Copyright (c) 2021-2025 community-scripts ORG
 # Author: iceteaSA
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
@@ -154,77 +155,6 @@ EOF
     fi
 }
 
-# Override build_container to use our own install script
-# The original build_container hardcodes the community-scripts repo URL
-# We need to fetch from our repo instead until we're merged into community-scripts
-build_container() {
-    local TEMP_PASSWD NETWORK_CONFIG IPv4 IPv6
-    NETWORK_CONFIG="-net0 name=eth0,bridge=$BRG$MAC,ip=$NET$GATE$VLAN$MTU"
-
-    if [ "$CT_TYPE" == "1" ]; then
-        FEATURES="keyctl=1,nesting=1"
-    else
-        FEATURES="keyctl=1,nesting=1"
-        PERM_WRITE="lxc.cgroup2.devices.allow: c 226:128 rwm"
-    fi
-
-    TEMP_PASSWD=$(openssl rand -base64 8)
-    msg_info "Creating LXC Container"
-    pct create "$CTID" "${PCT_OSTYPE}:vztmpl/${TEMPLATE}" \
-        -features "$FEATURES" \
-        -hostname "$HN" \
-        -tags "$TAGS" \
-        -cores "$CORE_COUNT" \
-        -memory "$RAM_SIZE" \
-        -unprivileged "$CT_TYPE" \
-        -onboot 1 \
-        $NETWORK_CONFIG \
-        -password "$TEMP_PASSWD" \
-        -rootfs "$CONTAINER_STORAGE:${PCT_DISK_SIZE:-8}"
-    msg_ok "LXC Container '$CTID' successfully created"
-
-    if [ -n "$PERM_WRITE" ]; then
-        echo "$PERM_WRITE" >> /etc/pve/lxc/$CTID.conf
-    fi
-
-    msg_info "Starting LXC Container"
-    pct start "$CTID"
-    msg_ok "Started LXC Container"
-
-    if [ "$CT_TYPE" == "0" ]; then
-        sleep 2
-        pct push "$CTID" /etc/pve/nodes/"$PVEHOST_NAME"/pve-ssl.pem /etc/ssl/certs/web-server-ca.pem
-    fi
-
-    msg_info "Waiting for LXC Container to be ready"
-    sleep 5
-    pct exec "$CTID" -- bash -c 'until ping -c1 8.8.8.8 &>/dev/null; do sleep 1; done'
-    msg_ok "Network in LXC is reachable (ping)"
-
-    msg_info "Customizing LXC Container"
-    pct exec "$CTID" -- bash -c "
-        echo 'root:${TEMP_PASSWD}' | chpasswd
-        rm -f /etc/motd /etc/update-motd.d/10-uname
-        touch ~/.hushlogin
-        DISCARD='0'
-        if [[ \$(pveversion | grep '^pve-manager/8.2' | wc -l) -eq 1 ]]; then
-          DISCARD='1'
-        fi
-        cat <<'EOF' >/etc/fstab
-proc /proc proc defaults 0 0
-EOF
-    "
-    msg_ok "Customized LXC Container"
-
-    # Custom: Use our install script from our repo instead of community-scripts
-    msg_info "Installing ${APP} from iceteaSA/waydroid-proxmox"
-    if ! lxc-attach -n "$CTID" -- bash -c "$(curl -fsSL https://raw.githubusercontent.com/iceteaSA/waydroid-proxmox/claude/fix-install-spawn-agent-011CV5K7wLiBqwKQTXuuxeCx/install/waydroid-install.sh)"; then
-        msg_error "Installation failed"
-        return 1
-    fi
-    msg_ok "${APP} Installation Complete"
-}
-
 function update_script() {
     header_info
     check_container_storage
@@ -272,7 +202,7 @@ echo ""
 
 # Let build.func handle container setup interactively
 start
-build_container  # This now uses our overridden version
+build_container  # Uses our custom build.func with modified install script URL
 description
 
 # Post-creation configuration
