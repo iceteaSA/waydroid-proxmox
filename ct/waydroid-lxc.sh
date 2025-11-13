@@ -488,7 +488,6 @@ cat > /usr/local/bin/start-waydroid.sh <<EOFSCRIPT
 
 # Set environment variables
 export XDG_RUNTIME_DIR=/run/user/0
-export WAYLAND_DISPLAY=wayland-0
 
 # GPU-specific environment variables
 GPU_TYPE="${GPU_TYPE}"
@@ -527,7 +526,35 @@ mkdir -p \$XDG_RUNTIME_DIR
 # Start Sway compositor in background
 sway &
 SWAY_PID=\$!
-sleep 3
+
+# Wait for Sway to create Wayland socket (dynamically detect)
+echo "Waiting for Wayland socket creation..."
+RETRY_COUNT=0
+MAX_RETRIES=30
+WAYLAND_DISPLAY=""
+
+while [ -z "\$WAYLAND_DISPLAY" ] && [ \$RETRY_COUNT -lt \$MAX_RETRIES ]; do
+    sleep 1
+    RETRY_COUNT=\$((RETRY_COUNT + 1))
+
+    # Check for any wayland socket
+    for socket in "\$XDG_RUNTIME_DIR"/wayland-*; do
+        if [ -S "\$socket" ]; then
+            WAYLAND_DISPLAY=\$(basename "\$socket")
+            echo "Detected Wayland socket: \$WAYLAND_DISPLAY"
+            break
+        fi
+    done
+done
+
+if [ -z "\$WAYLAND_DISPLAY" ]; then
+    echo "ERROR: No Wayland socket found after \${MAX_RETRIES}s"
+    ls -la "\$XDG_RUNTIME_DIR/" || true
+    exit 1
+fi
+
+export WAYLAND_DISPLAY
+echo "Using Wayland socket: \$WAYLAND_DISPLAY"
 
 # Start WayVNC
 wayvnc 0.0.0.0 5900 &
@@ -602,7 +629,6 @@ TimeoutStartSec=120
 TimeoutStopSec=30
 User=root
 Environment="XDG_RUNTIME_DIR=/run/user/0"
-Environment="WAYLAND_DISPLAY=wayland-0"
 # Watchdog
 WatchdogSec=60
 # Resource limits
