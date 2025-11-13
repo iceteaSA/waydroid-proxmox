@@ -14,7 +14,7 @@ echo "WARNING: This will compile WayVNC from source"
 echo "Estimated time: 15-20 minutes"
 echo ""
 read -p "Continue? (y/n) " -n 1 -r
-echo ""
+echo
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     echo "Aborted"
     exit 1
