@@ -180,35 +180,66 @@ else
     export WLR_RENDERER_ALLOW_SOFTWARE=1
 fi
 
-# Start Weston compositor in headless mode (better for containers than Sway)
-echo "Starting Weston compositor..."
-# Weston headless backend configuration
-weston --backend=headless-backend.so --width=1920 --height=1080 &
-WESTON_PID=$!
-sleep 5
+# Start Sway compositor in headless mode
+# NOTE: WayVNC requires a wlroots-based compositor (Sway works, Weston doesn't)
+echo "Starting Sway compositor in headless mode..."
+export WLR_BACKENDS=headless
+export WLR_LIBINPUT_NO_DEVICES=1
 
-# Verify Weston started
-if ! kill -0 $WESTON_PID 2>/dev/null; then
-    echo "ERROR: Weston failed to start"
+# Sway needs to create the Wayland socket before WayVNC can connect
+# Start Sway in background
+sway &
+SWAY_PID=$!
+
+# Wait for Sway to create the Wayland socket
+echo "Waiting for Wayland socket creation..."
+SOCKET_PATH="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+RETRY_COUNT=0
+MAX_RETRIES=30
+
+while [ ! -S "$SOCKET_PATH" ] && [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    sleep 1
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    if [ $((RETRY_COUNT % 5)) -eq 0 ]; then
+        echo "Still waiting for Wayland socket at $SOCKET_PATH... ($RETRY_COUNT/$MAX_RETRIES)"
+    fi
+done
+
+# Verify Sway started and socket exists
+if ! kill -0 $SWAY_PID 2>/dev/null; then
+    echo "ERROR: Sway failed to start"
     exit 1
 fi
 
+if [ ! -S "$SOCKET_PATH" ]; then
+    echo "ERROR: Wayland socket not created at $SOCKET_PATH after ${MAX_RETRIES}s"
+    echo "Checking XDG_RUNTIME_DIR contents:"
+    ls -la "$XDG_RUNTIME_DIR/" || true
+    kill $SWAY_PID 2>/dev/null || true
+    exit 1
+fi
+
+echo "Wayland socket ready at $SOCKET_PATH"
+
 # Start WayVNC with authentication
 echo "Starting WayVNC on port 5900..."
-# WayVNC command-line usage: wayvnc [address] [port]
-# Authentication is done via ~/.config/wayvnc/config or we can use simple mode
-# For simplicity, run without auth (can be secured by firewall/network isolation)
+# WayVNC will connect to the Wayland socket via WAYLAND_DISPLAY environment variable
 wayvnc 0.0.0.0 5900 &
 WAYVNC_PID=$!
 sleep 3
 
 # Verify WayVNC started
 if ! kill -0 $WAYVNC_PID 2>/dev/null; then
-    echo "WARNING: WayVNC failed to start, trying without args..."
-    wayvnc &
-    WAYVNC_PID=$!
-    sleep 2
+    echo "ERROR: WayVNC failed to start"
+    echo "Checking WayVNC requirements:"
+    echo "  WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
+    echo "  Socket exists: $([ -S "$SOCKET_PATH" ] && echo 'yes' || echo 'no')"
+    echo "  Sway running: $(kill -0 $SWAY_PID 2>/dev/null && echo 'yes' || echo 'no')"
+    kill $SWAY_PID 2>/dev/null || true
+    exit 1
 fi
+
+echo "WayVNC started successfully and connected to Sway"
 
 # Initialize Waydroid if needed (this downloads ~450MB on first run)
 if [ ! -d "/var/lib/waydroid/overlay" ]; then
@@ -233,16 +264,17 @@ SESSION_PID=$!
 echo "========================================"
 echo "Waydroid started successfully!"
 echo "VNC: Port 5900"
-echo "Weston PID: $WESTON_PID"
+echo "Sway PID: $SWAY_PID"
 echo "WayVNC PID: $WAYVNC_PID"
 echo "Session PID: $SESSION_PID"
+echo "Wayland Socket: $SOCKET_PATH"
 echo "========================================"
 
 # Keep the script running and monitor child processes
 while true; do
     # Check if critical processes are still running
-    if ! kill -0 $WESTON_PID 2>/dev/null; then
-        echo "ERROR: Weston died, exiting..."
+    if ! kill -0 $SWAY_PID 2>/dev/null; then
+        echo "ERROR: Sway compositor died, exiting..."
         exit 1
     fi
     if ! kill -0 $WAYVNC_PID 2>/dev/null; then
