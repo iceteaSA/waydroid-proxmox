@@ -144,8 +144,18 @@ cat > /usr/local/bin/start-waydroid.sh <<'EOFSCRIPT'
 #!/bin/bash
 # Start Waydroid with VNC access
 
+set -e
+
+# Setup environment
 export XDG_RUNTIME_DIR=/run/user/0
 export WAYLAND_DISPLAY=wayland-0
+mkdir -p $XDG_RUNTIME_DIR
+
+# Start DBus session if not running
+if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+    eval $(dbus-launch --sh-syntax)
+    echo "Started DBus session: $DBUS_SESSION_BUS_ADDRESS"
+fi
 
 # Load environment
 [ -f /tmp/waydroid-env.sh ] && source /tmp/waydroid-env.sh
@@ -167,40 +177,69 @@ if [ "$SOFTWARE_RENDERING" != "1" ]; then
     esac
 else
     export LIBGL_ALWAYS_SOFTWARE=1
+    export WLR_RENDERER_ALLOW_SOFTWARE=1
 fi
 
-mkdir -p $XDG_RUNTIME_DIR
-
-# Start compositor
-sway &
+# Start Sway compositor in headless mode
+echo "Starting Sway compositor..."
+sway -c /dev/null &
 SWAY_PID=$!
-sleep 3
+sleep 5
 
-# Start VNC
+# Verify Sway started
+if ! kill -0 $SWAY_PID 2>/dev/null; then
+    echo "ERROR: Sway failed to start"
+    exit 1
+fi
+
+# Start WayVNC
+echo "Starting WayVNC on port 5900..."
 wayvnc 0.0.0.0 5900 &
 WAYVNC_PID=$!
+sleep 2
 
-# Initialize Waydroid if needed
+# Initialize Waydroid if needed (this downloads ~450MB on first run)
 if [ ! -d "/var/lib/waydroid/overlay" ]; then
-    echo "Initializing Waydroid..."
+    echo "Initializing Waydroid (downloading Android images, ~450MB)..."
+    echo "This will take 5-10 minutes on first run..."
     if [ "${USE_GAPPS:-yes}" = "yes" ]; then
-        waydroid init -s GAPPS -f || exit 1
+        waydroid init -s GAPPS -f
     else
-        waydroid init -f || exit 1
+        waydroid init -f
     fi
 fi
 
 # Start Waydroid container
-waydroid container start || exit 1
+echo "Starting Waydroid container..."
+waydroid container start
 
 # Start Waydroid session
+echo "Starting Waydroid session..."
 waydroid session start &
+SESSION_PID=$!
 
-echo "Waydroid started successfully"
-echo "VNC server running on port 5900"
-echo "Sway PID: $SWAY_PID, WayVNC PID: $WAYVNC_PID"
+echo "========================================"
+echo "Waydroid started successfully!"
+echo "VNC: Port 5900"
+echo "Sway PID: $SWAY_PID"
+echo "WayVNC PID: $WAYVNC_PID"
+echo "Session PID: $SESSION_PID"
+echo "========================================"
 
-wait
+# Keep the script running and monitor child processes
+while true; do
+    # Check if critical processes are still running
+    if ! kill -0 $SWAY_PID 2>/dev/null; then
+        echo "ERROR: Sway died, exiting..."
+        exit 1
+    fi
+    if ! kill -0 $WAYVNC_PID 2>/dev/null; then
+        echo "ERROR: WayVNC died, exiting..."
+        exit 1
+    fi
+
+    sleep 10
+done
 EOFSCRIPT
 
 chmod +x /usr/local/bin/start-waydroid.sh
@@ -220,15 +259,13 @@ Type=simple
 ExecStart=/usr/local/bin/start-waydroid.sh
 Restart=on-failure
 RestartSec=15
-TimeoutStartSec=120
+TimeoutStartSec=600
 TimeoutStopSec=30
+KillMode=mixed
+KillSignal=SIGTERM
 User=root
 Environment="XDG_RUNTIME_DIR=/run/user/0"
 Environment="WAYLAND_DISPLAY=wayland-0"
-WatchdogSec=60
-MemoryHigh=3G
-MemoryMax=4G
-CPUQuota=200%
 
 [Install]
 WantedBy=multi-user.target
