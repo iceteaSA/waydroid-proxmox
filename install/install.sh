@@ -40,7 +40,8 @@ RENDER_NODE=""
 # Custom Waydroid prompts (before standard install_script)
 waydroid_custom_settings() {
     echo ""
-    msg_info "Waydroid-Specific Configuration"
+    echo -e "${BL}Waydroid-Specific Configuration${CL}"
+    echo ""
 
     # Ask about container type
     echo -e "${BL}Container Configuration:${CL}"
