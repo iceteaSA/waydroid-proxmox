@@ -25,7 +25,7 @@ DISK_SIZE="${DISK_SIZE:-16}"
 CORES="${CORES:-2}"
 RAM="${RAM:-2048}"
 BRIDGE="${BRIDGE:-vmbr0}"
-STORAGE="${STORAGE:-local-lxc}"
+STORAGE="${STORAGE:-}"  # Will be auto-detected if not specified
 OS_TEMPLATE="debian-12-standard"
 UNPRIVILEGED=0
 
@@ -128,7 +128,8 @@ ${BL}OPTIONS:${CL}
     --disk <size>         Disk size in GB (default: 16)
     --cpu <cores>         CPU cores (default: 2)
     --ram <mb>            RAM in MB (default: 2048)
-    --storage <pool>      Storage pool (default: local-lxc)
+    --storage <pool>      Storage pool (default: auto-detect)
+                          Preference: local-lxc > local > local-btrfs > local-zfs
     --bridge <name>       Network bridge (default: vmbr0)
     --privileged          Use privileged container (default, for GPU)
     --unprivileged        Use unprivileged container (software rendering only)
@@ -208,6 +209,39 @@ get_next_ctid() {
     else
         echo "100"
     fi
+}
+
+# Auto-detect suitable storage for containers
+detect_storage() {
+    if ! is_proxmox_host; then
+        echo ""
+        return
+    fi
+
+    # Preference order for storage
+    local preferred_storage=("local-lxc" "local" "local-btrfs" "local-zfs")
+
+    # Get all available storage that supports containers (type: dir, lvm, lvmthin, zfspool, btrfs)
+    mapfile -t available_storage < <(pvesm status 2>/dev/null | awk 'NR>1 && /^[a-zA-Z]/ && ($2 ~ /dir|lvm|lvmthin|zfspool|btrfs/) {print $1}')
+
+    if [ ${#available_storage[@]} -eq 0 ]; then
+        msg_error "No suitable storage found for containers"
+        return 1
+    fi
+
+    # Try preferred storage first
+    for pref in "${preferred_storage[@]}"; do
+        for avail in "${available_storage[@]}"; do
+            if [ "$pref" = "$avail" ]; then
+                echo "$avail"
+                return 0
+            fi
+        done
+    done
+
+    # If no preferred storage found, use the first available
+    echo "${available_storage[0]}"
+    return 0
 }
 
 # Cleanup function for error handling
@@ -316,12 +350,19 @@ preflight_checks() {
             fi
         done
 
-        # Check storage
-        if ! pvesm status | grep -q "^${STORAGE}"; then
+        # Check storage (must be set by now)
+        if [ -z "$STORAGE" ]; then
+            msg_error "No storage specified and auto-detection failed"
+            msg_info "Available storage:"
+            pvesm status | awk 'NR>1 {print "  - " $1}'
+            checks_passed=false
+        elif ! pvesm status 2>/dev/null | grep -q "^${STORAGE} "; then
             msg_error "Storage '${STORAGE}' does not exist"
             msg_info "Available storage:"
             pvesm status | awk 'NR>1 {print "  - " $1}'
             checks_passed=false
+        else
+            msg_ok "Using storage: ${STORAGE}"
         fi
 
         # Check network bridge
@@ -495,6 +536,7 @@ interactive_setup() {
     echo -e "${BL}Container:${CL}"
     echo -e "  CTID: ${GN}${CTID}${CL}"
     echo -e "  Type: ${GN}$([ "$UNPRIVILEGED" = "1" ] && echo "Unprivileged" || echo "Privileged")${CL}"
+    echo -e "  Storage: ${GN}${STORAGE}${CL}"
     echo -e "  Cores: ${GN}${CORES}${CL}"
     echo -e "  RAM: ${GN}${RAM}MB${CL}"
     echo -e "  Disk: ${GN}${DISK_SIZE}GB${CL}"
@@ -1078,6 +1120,18 @@ main() {
 
         # Validate CTID
         validate_ctid "$CTID" || exit 1
+
+        # Auto-detect storage if not specified
+        if [ -z "$STORAGE" ]; then
+            msg_info "Auto-detecting storage..."
+            STORAGE=$(detect_storage)
+            if [ -z "$STORAGE" ]; then
+                msg_error "Failed to auto-detect suitable storage"
+                msg_info "Please specify storage with --storage option"
+                exit 1
+            fi
+            msg_ok "Auto-detected storage: $STORAGE"
+        fi
 
         # Set GPU type if not specified
         if [ -z "$GPU_TYPE" ]; then
