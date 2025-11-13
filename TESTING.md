@@ -1,26 +1,25 @@
 # Testing the Waydroid Installation Script
 
-## Current Issues & Solutions
+## Installation Method
 
-### Issue: "Will install with GAPPS" spinner doesn't go away
+The script now uses a **local copy of build.func** with a modified install script URL. This means:
+- No function overrides needed
+- Cleaner code
+- Works exactly like community scripts
+- Just points to our repo instead
 
-**Cause:** You're running a cached version of the script from GitHub.
-
-**Solution:** Force-clear the cache and run the latest version:
+## How to Run
 
 ```bash
-# Method 1: Add a cache-busting parameter
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/iceteaSA/waydroid-proxmox/claude/fix-install-spawn-agent-011CV5K7wLiBqwKQTXuuxeCx/ct/waydroid.sh?$(date +%s)')"
-
-# Method 2: Download and run locally
-wget -O /tmp/waydroid-install.sh "https://raw.githubusercontent.com/iceteaSA/waydroid-proxmox/claude/fix-install-spawn-agent-011CV5K7wLiBqwKQTXuuxeCx/ct/waydroid.sh"
-bash /tmp/waydroid-install.sh
-
-# Method 3: Clone and run from repo
-cd /tmp
+# Recommended: Clone and run locally (avoids all caching issues)
+cd /tmp && rm -rf waydroid-proxmox
 git clone --depth 1 -b claude/fix-install-spawn-agent-011CV5K7wLiBqwKQTXuuxeCx https://github.com/iceteaSA/waydroid-proxmox.git
-cd waydroid-proxmox
-bash ct/waydroid.sh
+bash /tmp/waydroid-proxmox/ct/waydroid.sh
+```
+
+If a container already exists, remove it first:
+```bash
+pct stop 103 && pct destroy 103
 ```
 
 ### Verify Script Version
@@ -51,12 +50,13 @@ All `msg_info` calls now have proper `msg_ok` closures. If you see a hanging spi
 
 ## Changes in Version 2.0-community
 
+- ✅ Uses local build.func with modified install script URL
+- ✅ No function overrides needed - clean implementation
 - ✅ Removed all blocking `msg_info` calls after user input
-- ✅ Removed premature summary that tried to show uninitialized variables
 - ✅ Fixed NVIDIA detection to not leave hanging spinners
 - ✅ Simplified interactive flow
-- ✅ Let build.func handle container setup properly
 - ✅ Added version identifier for debugging
+- ✅ Proper GPU detection and configuration
 
 ## Debugging
 
