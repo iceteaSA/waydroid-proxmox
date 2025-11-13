@@ -141,7 +141,7 @@ chmod +x install/install.sh
 
 The installation script will:
 1. Check for Intel GPU
-2. Download Debian 12 template (if not present)
+2. Download Debian 13 template (if not present)
 3. Create LXC container with GPU passthrough
 4. Configure container for Waydroid
 5. Install Waydroid, Wayland compositor, and VNC server

@@ -309,7 +309,7 @@ The installer will automatically use community functions for:
 ## Requirements
 
 - Proxmox VE 7.0 or later
-- Debian 12 (Bookworm) LXC template
+- Debian 13 (Trixie) LXC template
 - For GPU passthrough:
   - Intel: 6th gen (Skylake) or newer recommended
   - AMD: GCN 3.0 or newer

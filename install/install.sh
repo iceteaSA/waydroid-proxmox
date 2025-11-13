@@ -27,7 +27,7 @@ var_cpu="2"
 var_ram="2048"
 var_disk="16"
 var_os="debian"
-var_version="12"
+var_version="13"
 var_unprivileged="0"  # Privileged by default for GPU access
 
 # Waydroid-specific variables

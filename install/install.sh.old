@@ -35,7 +35,7 @@ CORES="2"
 RAM="2048"
 BRIDGE="vmbr0"
 STORAGE="local-lxc"
-OS_TEMPLATE="debian-12-standard"
+OS_TEMPLATE="debian-13-standard"
 UNPRIVILEGED=0
 GPU_TYPE=""
 USE_GAPPS="yes"
@@ -565,7 +565,7 @@ fi
 
 TEMPLATE_PATH="/var/lib/vz/template/cache/${OS_TEMPLATE}_amd64.tar.zst"
 if [ ! -f "$TEMPLATE_PATH" ]; then
-    msg_info "Downloading Debian 12 template..."
+    msg_info "Downloading Debian 13 template..."
     if ! pveam update; then
         msg_error "Failed to update template list"
         exit 1
