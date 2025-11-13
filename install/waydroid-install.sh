@@ -120,8 +120,8 @@ fi
 msg_info "Setting up VNC"
 mkdir -p /root/.config/wayvnc
 
-# Generate VNC password
-VNC_PASSWORD=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 16)
+# Generate VNC password using openssl (more reliable in LXC)
+VNC_PASSWORD=$(openssl rand -base64 12 | tr -d '/+=' | head -c 16)
 echo "$VNC_PASSWORD" > /root/.config/wayvnc/password
 chmod 600 /root/.config/wayvnc/password
 
