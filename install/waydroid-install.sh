@@ -117,24 +117,41 @@ EOF
     msg_ok "Configured GPU Access"
 fi
 
+msg_info "Creating waydroid user"
+# Create system user for running compositor and waydroid (Sway won't run as root)
+if ! id -u waydroid >/dev/null 2>&1; then
+    useradd -r -s /bin/bash -d /home/waydroid -m waydroid
+fi
+# Add to video/render groups for GPU access
+usermod -aG video,render waydroid
+
+# Give waydroid user access to /var/lib/waydroid
+mkdir -p /var/lib/waydroid
+chown -R waydroid:waydroid /var/lib/waydroid
+msg_ok "Created waydroid user"
+
 msg_info "Setting up VNC"
-mkdir -p /root/.config/wayvnc
+# Create VNC config for waydroid user
+mkdir -p /home/waydroid/.config/wayvnc
+chown -R waydroid:waydroid /home/waydroid/.config
 
 # Generate VNC password using openssl (more reliable in LXC)
 VNC_PASSWORD=$(openssl rand -base64 12 | tr -d '/+=' | head -c 16)
-echo "$VNC_PASSWORD" > /root/.config/wayvnc/password
-chmod 600 /root/.config/wayvnc/password
+echo "$VNC_PASSWORD" > /home/waydroid/.config/wayvnc/password
+chmod 600 /home/waydroid/.config/wayvnc/password
+chown waydroid:waydroid /home/waydroid/.config/wayvnc/password
 
-cat > /root/.config/wayvnc/config <<EOF
+cat > /home/waydroid/.config/wayvnc/config <<EOF
 address=0.0.0.0
 port=5900
 enable_auth=true
 username=waydroid
-password_file=/root/.config/wayvnc/password
+password_file=/home/waydroid/.config/wayvnc/password
 max_rate=60
 EOF
+chown waydroid:waydroid /home/waydroid/.config/wayvnc/config
 
-# Save password for user reference
+# Save password for user reference (keep in root for easy access)
 echo "$VNC_PASSWORD" > /root/vnc-password.txt
 chmod 600 /root/vnc-password.txt
 msg_ok "VNC Configured (password saved to /root/vnc-password.txt)"
@@ -144,63 +161,169 @@ cat > /usr/local/bin/start-waydroid.sh <<'EOFSCRIPT'
 #!/bin/bash
 # Start Waydroid with VNC access
 
-export XDG_RUNTIME_DIR=/run/user/0
+set -e
+
+# Setup environment for waydroid user (compositor runs as non-root)
+DISPLAY_USER="waydroid"
+DISPLAY_UID=$(id -u $DISPLAY_USER)
+DISPLAY_GID=$(id -g $DISPLAY_USER)
+export DISPLAY_XDG_RUNTIME_DIR="/run/user/$DISPLAY_UID"
 export WAYLAND_DISPLAY=wayland-0
+
+# Create runtime directory for waydroid user
+mkdir -p "$DISPLAY_XDG_RUNTIME_DIR"
+chown $DISPLAY_USER:$DISPLAY_USER "$DISPLAY_XDG_RUNTIME_DIR"
+chmod 700 "$DISPLAY_XDG_RUNTIME_DIR"
+
+# Also setup root's XDG_RUNTIME_DIR for Waydroid
+export XDG_RUNTIME_DIR=/run/user/0
+mkdir -p $XDG_RUNTIME_DIR
+
+# Start DBus session for waydroid user if not running
+if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+    # Start dbus as the waydroid user
+    su -c "dbus-launch --sh-syntax" $DISPLAY_USER > /tmp/dbus-session.env
+    source /tmp/dbus-session.env
+    echo "Started DBus session: $DBUS_SESSION_BUS_ADDRESS"
+fi
 
 # Load environment
 [ -f /tmp/waydroid-env.sh ] && source /tmp/waydroid-env.sh
 
-# GPU environment variables
+# GPU environment variables (will be passed to Sway)
 GPU_TYPE="${GPU_TYPE:-software}"
 SOFTWARE_RENDERING="${SOFTWARE_RENDERING:-1}"
 
+# Start Sway compositor in headless mode as waydroid user
+# NOTE: WayVNC requires a wlroots-based compositor (Sway works, Weston doesn't)
+# NOTE: Sway refuses to run as root, so we run as waydroid user
+echo "Starting Sway compositor as $DISPLAY_USER in headless mode..."
+
+# Prepare environment for Sway
+SWAY_ENV="XDG_RUNTIME_DIR=$DISPLAY_XDG_RUNTIME_DIR WAYLAND_DISPLAY=$WAYLAND_DISPLAY WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1"
+
+# Add GPU environment variables if needed
 if [ "$SOFTWARE_RENDERING" != "1" ]; then
     case $GPU_TYPE in
         intel)
-            export MESA_LOADER_DRIVER_OVERRIDE=iris
-            export LIBVA_DRIVER_NAME=iHD
+            SWAY_ENV="$SWAY_ENV MESA_LOADER_DRIVER_OVERRIDE=iris LIBVA_DRIVER_NAME=iHD"
             ;;
         amd)
-            export MESA_LOADER_DRIVER_OVERRIDE=radeonsi
-            export LIBVA_DRIVER_NAME=radeonsi
+            SWAY_ENV="$SWAY_ENV MESA_LOADER_DRIVER_OVERRIDE=radeonsi LIBVA_DRIVER_NAME=radeonsi"
             ;;
     esac
 else
-    export LIBGL_ALWAYS_SOFTWARE=1
+    SWAY_ENV="$SWAY_ENV LIBGL_ALWAYS_SOFTWARE=1 WLR_RENDERER_ALLOW_SOFTWARE=1"
 fi
 
-mkdir -p $XDG_RUNTIME_DIR
-
-# Start compositor
-sway &
+# Start Sway as waydroid user in background
+su -c "$SWAY_ENV sway" $DISPLAY_USER &
 SWAY_PID=$!
+
+# Wait for Sway to create the Wayland socket
+echo "Waiting for Wayland socket creation..."
+SOCKET_PATH="$DISPLAY_XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+RETRY_COUNT=0
+MAX_RETRIES=30
+
+while [ ! -S "$SOCKET_PATH" ] && [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    sleep 1
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    if [ $((RETRY_COUNT % 5)) -eq 0 ]; then
+        echo "Still waiting for Wayland socket at $SOCKET_PATH... ($RETRY_COUNT/$MAX_RETRIES)"
+    fi
+done
+
+# Verify Sway started and socket exists
+if ! kill -0 $SWAY_PID 2>/dev/null; then
+    echo "ERROR: Sway failed to start"
+    exit 1
+fi
+
+if [ ! -S "$SOCKET_PATH" ]; then
+    echo "ERROR: Wayland socket not created at $SOCKET_PATH after ${MAX_RETRIES}s"
+    echo "Checking DISPLAY_XDG_RUNTIME_DIR contents:"
+    ls -la "$DISPLAY_XDG_RUNTIME_DIR/" || true
+    kill $SWAY_PID 2>/dev/null || true
+    exit 1
+fi
+
+echo "Wayland socket ready at $SOCKET_PATH"
+
+# Make the Wayland socket accessible to root for Waydroid
+# Create a symbolic link in root's XDG_RUNTIME_DIR
+ln -sf "$SOCKET_PATH" "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+chmod 777 "$SOCKET_PATH"
+
+# Start WayVNC with authentication as waydroid user
+echo "Starting WayVNC on port 5900 as $DISPLAY_USER..."
+# WayVNC will connect to the Wayland socket via WAYLAND_DISPLAY environment variable
+WAYVNC_ENV="XDG_RUNTIME_DIR=$DISPLAY_XDG_RUNTIME_DIR WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
+su -c "$WAYVNC_ENV wayvnc 0.0.0.0 5900" $DISPLAY_USER &
+WAYVNC_PID=$!
 sleep 3
 
-# Start VNC
-wayvnc 0.0.0.0 5900 &
-WAYVNC_PID=$!
+# Verify WayVNC started
+if ! kill -0 $WAYVNC_PID 2>/dev/null; then
+    echo "ERROR: WayVNC failed to start"
+    echo "Checking WayVNC requirements:"
+    echo "  WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
+    echo "  Socket exists: $([ -S "$SOCKET_PATH" ] && echo 'yes' || echo 'no')"
+    echo "  Sway running: $(kill -0 $SWAY_PID 2>/dev/null && echo 'yes' || echo 'no')"
+    kill $SWAY_PID 2>/dev/null || true
+    exit 1
+fi
 
-# Initialize Waydroid if needed
+echo "WayVNC started successfully and connected to Sway"
+
+# Initialize Waydroid if needed (this downloads ~450MB on first run)
 if [ ! -d "/var/lib/waydroid/overlay" ]; then
-    echo "Initializing Waydroid..."
+    echo "Initializing Waydroid (downloading Android images, ~450MB)..."
+    echo "This will take 5-10 minutes on first run..."
+    # Run waydroid init as waydroid user
+    INIT_ENV="XDG_RUNTIME_DIR=$DISPLAY_XDG_RUNTIME_DIR WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
     if [ "${USE_GAPPS:-yes}" = "yes" ]; then
-        waydroid init -s GAPPS -f || exit 1
+        su -c "$INIT_ENV waydroid init -s GAPPS -f" $DISPLAY_USER
     else
-        waydroid init -f || exit 1
+        su -c "$INIT_ENV waydroid init -f" $DISPLAY_USER
     fi
 fi
 
-# Start Waydroid container
-waydroid container start || exit 1
+# Start Waydroid container as waydroid user
+echo "Starting Waydroid container as $DISPLAY_USER..."
+WAYDROID_ENV="XDG_RUNTIME_DIR=$DISPLAY_XDG_RUNTIME_DIR WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
+su -c "$WAYDROID_ENV waydroid container start" $DISPLAY_USER
 
-# Start Waydroid session
-waydroid session start &
+# Start Waydroid session as waydroid user
+echo "Starting Waydroid session as $DISPLAY_USER..."
+su -c "$WAYDROID_ENV waydroid session start" $DISPLAY_USER &
+SESSION_PID=$!
 
-echo "Waydroid started successfully"
-echo "VNC server running on port 5900"
-echo "Sway PID: $SWAY_PID, WayVNC PID: $WAYVNC_PID"
+echo "========================================"
+echo "Waydroid started successfully!"
+echo "VNC: Port 5900"
+echo "Display User: $DISPLAY_USER"
+echo "Sway PID: $SWAY_PID"
+echo "WayVNC PID: $WAYVNC_PID"
+echo "Session PID: $SESSION_PID"
+echo "Wayland Socket: $SOCKET_PATH"
+echo "Root Access: $XDG_RUNTIME_DIR/$WAYLAND_DISPLAY (symlink)"
+echo "========================================"
 
-wait
+# Keep the script running and monitor child processes
+while true; do
+    # Check if critical processes are still running
+    if ! kill -0 $SWAY_PID 2>/dev/null; then
+        echo "ERROR: Sway compositor died, exiting..."
+        exit 1
+    fi
+    if ! kill -0 $WAYVNC_PID 2>/dev/null; then
+        echo "ERROR: WayVNC died, exiting..."
+        exit 1
+    fi
+
+    sleep 10
+done
 EOFSCRIPT
 
 chmod +x /usr/local/bin/start-waydroid.sh
@@ -220,15 +343,13 @@ Type=simple
 ExecStart=/usr/local/bin/start-waydroid.sh
 Restart=on-failure
 RestartSec=15
-TimeoutStartSec=120
+TimeoutStartSec=600
 TimeoutStopSec=30
+KillMode=mixed
+KillSignal=SIGTERM
 User=root
 Environment="XDG_RUNTIME_DIR=/run/user/0"
 Environment="WAYLAND_DISPLAY=wayland-0"
-WatchdogSec=60
-MemoryHigh=3G
-MemoryMax=4G
-CPUQuota=200%
 
 [Install]
 WantedBy=multi-user.target
