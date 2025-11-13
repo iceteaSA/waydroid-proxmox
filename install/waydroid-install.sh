@@ -168,7 +168,6 @@ DISPLAY_USER="waydroid"
 DISPLAY_UID=$(id -u $DISPLAY_USER)
 DISPLAY_GID=$(id -g $DISPLAY_USER)
 export DISPLAY_XDG_RUNTIME_DIR="/run/user/$DISPLAY_UID"
-export WAYLAND_DISPLAY=wayland-0
 
 # Create runtime directory for waydroid user
 mkdir -p "$DISPLAY_XDG_RUNTIME_DIR"
@@ -199,8 +198,8 @@ SOFTWARE_RENDERING="${SOFTWARE_RENDERING:-1}"
 # NOTE: Sway refuses to run as root, so we run as waydroid user
 echo "Starting Sway compositor as $DISPLAY_USER in headless mode..."
 
-# Prepare environment for Sway
-SWAY_ENV="XDG_RUNTIME_DIR=$DISPLAY_XDG_RUNTIME_DIR WAYLAND_DISPLAY=$WAYLAND_DISPLAY WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1"
+# Prepare environment for Sway (don't set WAYLAND_DISPLAY - let Sway choose)
+SWAY_ENV="XDG_RUNTIME_DIR=$DISPLAY_XDG_RUNTIME_DIR WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1"
 
 # Add GPU environment variables if needed
 if [ "$SOFTWARE_RENDERING" != "1" ]; then
@@ -220,17 +219,27 @@ fi
 su -c "$SWAY_ENV sway" $DISPLAY_USER &
 SWAY_PID=$!
 
-# Wait for Sway to create the Wayland socket
+# Wait for Sway to create a Wayland socket (dynamically detect which one)
 echo "Waiting for Wayland socket creation..."
-SOCKET_PATH="$DISPLAY_XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
 RETRY_COUNT=0
 MAX_RETRIES=30
+WAYLAND_DISPLAY=""
 
-while [ ! -S "$SOCKET_PATH" ] && [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+while [ -z "$WAYLAND_DISPLAY" ] && [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     sleep 1
     RETRY_COUNT=$((RETRY_COUNT + 1))
-    if [ $((RETRY_COUNT % 5)) -eq 0 ]; then
-        echo "Still waiting for Wayland socket at $SOCKET_PATH... ($RETRY_COUNT/$MAX_RETRIES)"
+
+    # Check for wayland-0, wayland-1, etc.
+    for socket in "$DISPLAY_XDG_RUNTIME_DIR"/wayland-*; do
+        if [ -S "$socket" ]; then
+            WAYLAND_DISPLAY=$(basename "$socket")
+            echo "Detected Wayland socket: $WAYLAND_DISPLAY"
+            break
+        fi
+    done
+
+    if [ -z "$WAYLAND_DISPLAY" ] && [ $((RETRY_COUNT % 5)) -eq 0 ]; then
+        echo "Still waiting for Wayland socket in $DISPLAY_XDG_RUNTIME_DIR... ($RETRY_COUNT/$MAX_RETRIES)"
     fi
 done
 
@@ -240,14 +249,16 @@ if ! kill -0 $SWAY_PID 2>/dev/null; then
     exit 1
 fi
 
-if [ ! -S "$SOCKET_PATH" ]; then
-    echo "ERROR: Wayland socket not created at $SOCKET_PATH after ${MAX_RETRIES}s"
+if [ -z "$WAYLAND_DISPLAY" ]; then
+    echo "ERROR: No Wayland socket found in $DISPLAY_XDG_RUNTIME_DIR after ${MAX_RETRIES}s"
     echo "Checking DISPLAY_XDG_RUNTIME_DIR contents:"
     ls -la "$DISPLAY_XDG_RUNTIME_DIR/" || true
     kill $SWAY_PID 2>/dev/null || true
     exit 1
 fi
 
+export WAYLAND_DISPLAY
+SOCKET_PATH="$DISPLAY_XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
 echo "Wayland socket ready at $SOCKET_PATH"
 
 # Make the Wayland socket accessible to root for Waydroid
@@ -349,7 +360,6 @@ KillMode=mixed
 KillSignal=SIGTERM
 User=root
 Environment="XDG_RUNTIME_DIR=/run/user/0"
-Environment="WAYLAND_DISPLAY=wayland-0"
 
 [Install]
 WantedBy=multi-user.target

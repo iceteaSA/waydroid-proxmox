@@ -836,21 +836,16 @@ apply_security_patches() {
 
     local patches_applied=0
 
-    # 1. Fix VNC localhost binding
+    # 1. Check VNC binding configuration
     msg_info "Checking VNC security configuration..."
     if [ -f /root/.config/wayvnc/config ]; then
         if grep -q "address=0.0.0.0" /root/.config/wayvnc/config 2>/dev/null; then
-            msg_warn "VNC is binding to all interfaces (security risk)"
-            if [ "$DRY_RUN" = false ]; then
-                sed -i 's/address=0\.0\.0\.0/address=127.0.0.1/' /root/.config/wayvnc/config
-                msg_ok "Fixed: VNC now binds to localhost only"
-                log "Applied VNC localhost binding fix"
-                ((patches_applied++))
-            else
-                msg_info "Would fix: Change VNC binding to localhost"
-            fi
+            msg_warn "VNC is binding to all interfaces (ensure firewall is configured)"
+            msg_info "Remote access enabled - verify iptables rate limiting is active"
+            log "VNC configured for remote access with authentication"
         else
-            msg_ok "VNC security: Already configured correctly"
+            msg_ok "VNC binding: Configured for localhost access only"
+            msg_info "For remote access, change address to 0.0.0.0 in /root/.config/wayvnc/config"
         fi
     else
         msg_warn "VNC config not found"
