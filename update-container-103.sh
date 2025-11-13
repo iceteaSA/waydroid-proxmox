@@ -1,11 +1,13 @@
 #!/bin/bash
 # Update Container 103 with Fixed WayVNC Startup Script
+# Run this from anywhere - it doesn't require a specific directory
 
 set -e
 
 CTID=103
 
 echo "Updating container $CTID with fixed startup script..."
+echo "(This script can be run from any location)"
 
 # Extract the startup script from install/waydroid-install.sh and deploy to container
 pct exec $CTID -- bash -c 'cat > /usr/local/bin/start-waydroid.sh' <<'EOFSCRIPT'
