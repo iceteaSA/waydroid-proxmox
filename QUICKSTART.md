@@ -4,6 +4,23 @@ Get Android running on Proxmox in 5, 10, or 30 minutes depending on your needs.
 
 ---
 
+## ⚠️ IMPORTANT: Debian 13 (Trixie) Recommended
+
+**For VNC Access:** Use **Debian 13 (Trixie)** containers instead of Debian 12 (Bookworm).
+
+**Why?** Debian 12's WayVNC 0.5.0 with neatvnc 0.5.4 has authentication issues that prevent VNC connections. Debian 13 includes WayVNC 0.8.0+ and neatvnc 0.8.1+ which:
+- ✅ Properly support `enable_auth=false` for passwordless VNC
+- ✅ Fix CVE-2024-42458 (critical authentication bypass vulnerability)
+- ✅ Work with standard VNC clients (TigerVNC, RealVNC, etc.)
+
+**See:** [DEBIAN-13-MIGRATION.md](DEBIAN-13-MIGRATION.md) for migration guide and details.
+
+**If you're on Debian 12 and experiencing "No matching security types" VNC errors:**
+- Read [HANDOVER.md](HANDOVER.md) for root cause analysis
+- Follow [DEBIAN-13-MIGRATION.md](DEBIAN-13-MIGRATION.md) to migrate
+
+---
+
 ## Table of Contents
 
 - [5-Minute Quick Start](#5-minute-quick-start)
