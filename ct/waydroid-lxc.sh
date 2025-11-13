@@ -549,7 +549,17 @@ fi
 # Create runtime directory if it doesn't exist
 mkdir -p \$XDG_RUNTIME_DIR
 
-# Start Sway compositor in background
+# Start Sway compositor in headless mode (required for LXC containers)
+# NOTE: WLR_BACKENDS=headless tells wlroots not to try accessing VT/TTY directly
+# NOTE: WLR_LIBINPUT_NO_DEVICES=1 prevents libinput from requiring input devices
+export WLR_BACKENDS=headless
+export WLR_LIBINPUT_NO_DEVICES=1
+
+# Add WLR_RENDERER_ALLOW_SOFTWARE if using software rendering
+if [ "\$SOFTWARE_RENDERING" = "1" ]; then
+    export WLR_RENDERER_ALLOW_SOFTWARE=1
+fi
+
 sway &
 SWAY_PID=\$!
 
