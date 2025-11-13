@@ -1,8 +1,8 @@
 # Developer Handoff Document
 
-**Last Updated:** 2025-01-12
-**Branch:** `claude/lxc-wayvnc-improvements-011CV4qdQ6Lg8t9V2AA3zit5`
-**Status:** ✅ Second 2-hour session completed - All critical security issues resolved + Major feature additions
+**Last Updated:** 2025-01-13
+**Branch:** `claude/continue-from-hand-011CV5J8B478BmZpAWDrfpde`
+**Status:** ✅ Third session completed - Complete refactor to use Proxmox VE helper scripts
 
 ---
 
@@ -15,7 +15,7 @@ This project provides an automated installer for running Android (via Waydroid) 
 - ✅ Multi-GPU detection and selection
 - ✅ Intel N150 optimization
 - ✅ AMD GPU support
-- ✅ Community script compatibility
+- ✅ **FULL Proxmox VE helper script integration** (NEW!)
 - ✅ VNC access via WayVNC with TLS/VeNCrypt encryption (localhost only)
 - ✅ Enhanced REST API v3.0 with rate limiting, webhooks, and Prometheus metrics
 - ✅ Comprehensive health check and monitoring system
@@ -30,8 +30,40 @@ This project provides an automated installer for running Android (via Waydroid) 
 - ✅ Bidirectional clipboard sharing (VNC ↔ Android)
 - ✅ App installation system with F-Droid support
 - ✅ All critical security vulnerabilities fixed
+- ✅ **Proper template downloading with version detection** (FIXED!)
 
-### Recent Changes (Second 2-Hour Session - 2025-01-12)
+### Recent Changes (Third Session - 2025-01-13)
+
+**CRITICAL FIX - Template Download Issue:**
+1. **Complete Refactor to Use Proxmox VE Helper Scripts:**
+   - Downloaded official build.func and core.func from community-scripts/ProxmoxVE
+   - Refactored install.sh to follow the jellyfin-install.sh pattern
+   - Fixed template download by using `build_container()` function instead of manual `pveam download`
+   - Template now correctly resolves to full version (e.g., debian-12-standard_12.7-1_amd64.tar.zst)
+   - Old broken approach: `pveam download local-btrfs debian-12-standard_amd64.tar.zst` ❌
+   - New working approach: `build_container()` handles template download with proper version detection ✅
+
+2. **New Project Structure:**
+   - Added `/misc/build.func` - Main Proxmox VE build and container creation functions (50K)
+   - Added `/misc/core.func` - Core utility functions (colors, messaging, error handling) (13K)
+   - Added `/examples/jellyfin-install.sh` - Reference implementation from community scripts
+   - Backed up old install.sh to install.sh.old
+
+3. **Improved Installation Flow:**
+   - install.sh now sources community helper functions
+   - Proper storage detection with BTRFS priority: local-lxc > local-btrfs > local-zfs > local
+   - Automatic template version detection and download
+   - Better error handling with proper exit codes
+   - Template download retry logic with exponential backoff
+
+4. **Maintained All Waydroid Features:**
+   - GPU selection (Intel/AMD/NVIDIA/Software) - unchanged
+   - Multi-GPU device detection and selection - unchanged
+   - GAPPS option - unchanged
+   - Privileged/Unprivileged containers - unchanged
+   - All LXC configuration for Waydroid - unchanged
+
+### Previous Changes (Second 2-Hour Session - 2025-01-12)
 
 **Security Fixes (All Critical Issues Resolved):**
 1. **Command Injection Fixes:**
@@ -214,7 +246,13 @@ waydroid-proxmox/
 ├── ct/
 │   └── waydroid-lxc.sh          # Container setup (runs inside LXC) [API v3.0]
 ├── install/
-│   └── install.sh               # Main installer (runs on Proxmox host) [SECURED]
+│   ├── install.sh               # Main installer (uses Proxmox VE helper scripts) [REFACTORED]
+│   └── install.sh.old           # Backup of original installer
+├── misc/                         # [NEW] Proxmox VE helper scripts
+│   ├── build.func               # Container build and creation functions (50K)
+│   └── core.func                # Core utilities (colors, messaging, error handling) (13K)
+├── examples/                     # [NEW] Reference implementations
+│   └── jellyfin-install.sh      # Jellyfin install example from community scripts
 ├── scripts/
 │   ├── helper-functions.sh      # Shared utility functions
 │   ├── configure-intel-n150.sh  # Intel GPU host configuration [SECURED]
@@ -224,22 +262,22 @@ waydroid-proxmox/
 │   ├── update-system.sh         # System update automation [ENHANCED]
 │   ├── optimize-performance.sh  # Performance tuning [SECURED]
 │   ├── monitor-performance.sh   # Real-time monitoring dashboard [ENHANCED]
-│   ├── tune-lxc.sh              # LXC performance & security tuning [NEW]
-│   ├── enhance-vnc.sh           # VNC encryption & noVNC setup [NEW]
-│   ├── setup-audio.sh           # Audio passthrough configuration [NEW]
-│   ├── setup-clipboard.sh       # Clipboard sharing setup [NEW]
-│   └── install-apps.sh          # App installation system [NEW]
+│   ├── tune-lxc.sh              # LXC performance & security tuning
+│   ├── enhance-vnc.sh           # VNC encryption & noVNC setup
+│   ├── setup-audio.sh           # Audio passthrough configuration
+│   ├── setup-clipboard.sh       # Clipboard sharing setup
+│   └── install-apps.sh          # App installation system
 ├── config/
 │   └── intel-n150.conf          # Intel N150 specific settings
 ├── docs/
 │   ├── INSTALLATION.md          # Detailed installation guide
 │   ├── HOME_ASSISTANT.md        # HA integration guide
 │   ├── CONFIGURATION.md         # Advanced configuration
-│   ├── LXC_TUNING.md            # LXC optimization guide [NEW]
-│   ├── VNC-ENHANCEMENTS.md      # VNC security & features [NEW]
-│   ├── API_IMPROVEMENTS_v3.0.md # API v3.0 documentation [NEW]
-│   ├── CLIPBOARD-SHARING.md     # Clipboard integration guide [NEW]
-│   └── APP_INSTALLATION.md      # App management guide [NEW]
+│   ├── LXC_TUNING.md            # LXC optimization guide
+│   ├── VNC-ENHANCEMENTS.md      # VNC security & features
+│   ├── API_IMPROVEMENTS_v3.0.md # API v3.0 documentation
+│   ├── CLIPBOARD-SHARING.md     # Clipboard integration guide
+│   └── APP_INSTALLATION.md      # App management guide
 ├── README.md                    # Project overview
 ├── LICENSE                      # MIT License
 └── HANDOFF.md                   # This file
