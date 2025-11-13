@@ -204,27 +204,30 @@ fi
 
 log "✓ WayVNC started successfully"
 
-# Initialize Waydroid if needed
+# Initialize Waydroid if needed (MUST run as root)
 if [ ! -d "/var/lib/waydroid/overlay" ]; then
     log "Initializing Waydroid (first run - this takes 5-10 minutes)..."
-    INIT_ENV="XDG_RUNTIME_DIR=$DISPLAY_XDG_RUNTIME_DIR WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
+    # Waydroid init needs root privileges - set environment for root to use waydroid user's display
+    export XDG_RUNTIME_DIR=$DISPLAY_XDG_RUNTIME_DIR
+    export WAYLAND_DISPLAY
     if [ "${USE_GAPPS:-yes}" = "yes" ]; then
-        su -c "$INIT_ENV waydroid init -s GAPPS -f" "$DISPLAY_USER" 2>&1 | tee /var/log/waydroid-init.log
+        waydroid init -s GAPPS -f 2>&1 | tee /var/log/waydroid-init.log
     else
-        su -c "$INIT_ENV waydroid init -f" "$DISPLAY_USER" 2>&1 | tee /var/log/waydroid-init.log
+        waydroid init -f 2>&1 | tee /var/log/waydroid-init.log
     fi
     log "✓ Waydroid initialized"
 fi
 
-# Start Waydroid container
+# Start Waydroid container (MUST run as root)
 log "Starting Waydroid container..."
-WAYDROID_ENV="XDG_RUNTIME_DIR=$DISPLAY_XDG_RUNTIME_DIR WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
-su -c "$WAYDROID_ENV waydroid container start" "$DISPLAY_USER" 2>&1 | tee /var/log/waydroid-container.log
+export XDG_RUNTIME_DIR=$DISPLAY_XDG_RUNTIME_DIR
+export WAYLAND_DISPLAY
+waydroid container start 2>&1 | tee /var/log/waydroid-container.log
 log "✓ Waydroid container started"
 
-# Start Waydroid session
+# Start Waydroid session (MUST run as root, in background)
 log "Starting Waydroid session..."
-nohup su -c "$WAYDROID_ENV waydroid session start" "$DISPLAY_USER" > /var/log/waydroid-session.log 2>&1 &
+nohup waydroid session start > /var/log/waydroid-session.log 2>&1 &
 sleep 5
 log "Waydroid session started"
 
