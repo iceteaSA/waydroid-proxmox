@@ -1344,7 +1344,7 @@ EOF'
   msg_ok "Customized LXC Container"
 
   # Modified to use iceteaSA/waydroid-proxmox repo instead of community-scripts
-  lxc-attach -n "$CTID" -- bash -c "$(curl -fsSL https://raw.githubusercontent.com/iceteaSA/waydroid-proxmox/claude/fix-install-spawn-agent-011CV5K7wLiBqwKQTXuuxeCx/install/${var_install}.sh)"
+  lxc-attach -n "$CTID" -- bash -c "$(curl -fsSL https://raw.githubusercontent.com/iceteaSA/waydroid-proxmox/main/install/${var_install}.sh)"
 }
 
 # This function sets the description of the container.
