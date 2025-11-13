@@ -129,7 +129,7 @@ ${BL}OPTIONS:${CL}
     --cpu <cores>         CPU cores (default: 2)
     --ram <mb>            RAM in MB (default: 2048)
     --storage <pool>      Storage pool (default: auto-detect)
-                          Preference: local-lxc > local > local-btrfs > local-zfs
+                          Preference: local-lxc > local-btrfs > local-zfs > local
     --bridge <name>       Network bridge (default: vmbr0)
     --privileged          Use privileged container (default, for GPU)
     --unprivileged        Use unprivileged container (software rendering only)
@@ -218,8 +218,9 @@ detect_storage() {
         return
     fi
 
-    # Preference order for storage
-    local preferred_storage=("local-lxc" "local" "local-btrfs" "local-zfs")
+    # Preference order for storage (prefer specialized container storage)
+    # Order: dedicated container storage > modern filesystems > fallback directory storage
+    local preferred_storage=("local-lxc" "local-btrfs" "local-zfs" "local")
 
     # Get all available storage that supports containers (type: dir, lvm, lvmthin, zfspool, btrfs)
     mapfile -t available_storage < <(pvesm status 2>/dev/null | awk 'NR>1 && /^[a-zA-Z]/ && ($2 ~ /dir|lvm|lvmthin|zfspool|btrfs/) {print $1}')
