@@ -569,9 +569,19 @@ create_container() {
     # Download template if needed
     local template_path="/var/lib/vz/template/cache/${OS_TEMPLATE}_amd64.tar.zst"
     if [ ! -f "$template_path" ]; then
-        msg_info "Downloading Debian 12 template..."
-        silent pveam update
-        silent pveam download "$STORAGE" "${OS_TEMPLATE}_amd64.tar.zst"
+        msg_info "Downloading Debian 12 template (this may take a few minutes)..."
+
+        # Update template list
+        if [ "$VERBOSE" = "yes" ]; then
+            pveam update
+        else
+            pveam update &>/dev/null
+        fi
+
+        # Download template with progress visible
+        echo -e "${BL}[PROGRESS]${CL} Downloading from repository..."
+        pveam download "$STORAGE" "${OS_TEMPLATE}_amd64.tar.zst"
+
         msg_ok "Template downloaded"
     fi
 
