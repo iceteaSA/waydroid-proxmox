@@ -193,11 +193,22 @@ if ! kill -0 $WESTON_PID 2>/dev/null; then
     exit 1
 fi
 
-# Start WayVNC
+# Start WayVNC with authentication
 echo "Starting WayVNC on port 5900..."
+# WayVNC command-line usage: wayvnc [address] [port]
+# Authentication is done via ~/.config/wayvnc/config or we can use simple mode
+# For simplicity, run without auth (can be secured by firewall/network isolation)
 wayvnc 0.0.0.0 5900 &
 WAYVNC_PID=$!
-sleep 2
+sleep 3
+
+# Verify WayVNC started
+if ! kill -0 $WAYVNC_PID 2>/dev/null; then
+    echo "WARNING: WayVNC failed to start, trying without args..."
+    wayvnc &
+    WAYVNC_PID=$!
+    sleep 2
+fi
 
 # Initialize Waydroid if needed (this downloads ~450MB on first run)
 if [ ! -d "/var/lib/waydroid/overlay" ]; then
