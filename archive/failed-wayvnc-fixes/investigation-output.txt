@@ -1,0 +1,15 @@
+========================================
+WayVNC Authentication Investigation
+========================================
+
+=== STEP 1: Read Current Config File ===
+Location: /home/waydroid/.config/wayvnc/config
+./investigate-wayvnc-auth.sh: line 16: pct: command not found
+ERROR: Config file not found!
+
+=== STEP 2: Check File Permissions ===
+./investigate-wayvnc-auth.sh: line 20: pct: command not found
+ERROR: Cannot stat file
+
+=== STEP 3: Check ALL Possible Config Locations ===
+./investigate-wayvnc-auth.sh: line 24: pct: command not found
