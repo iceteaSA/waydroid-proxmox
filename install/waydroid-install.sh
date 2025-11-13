@@ -183,6 +183,7 @@ fi
 # Start Sway compositor in headless mode
 # NOTE: WayVNC requires a wlroots-based compositor (Sway works, Weston doesn't)
 echo "Starting Sway compositor in headless mode..."
+export SWAY_ALLOW_ROOT=1
 export WLR_BACKENDS=headless
 export WLR_LIBINPUT_NO_DEVICES=1
 
