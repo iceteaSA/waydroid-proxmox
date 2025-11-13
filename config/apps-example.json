@@ -1,0 +1,115 @@
+{
+  "comment": "Waydroid App Installation Configuration (JSON format)",
+  "description": "This file defines Android apps to be installed in Waydroid",
+  "usage": "/home/user/waydroid-proxmox/scripts/install-apps.sh install-batch /path/to/this/file.json",
+
+  "apps": {
+    "local": [
+      "/path/to/local/app1.apk",
+      "/path/to/local/app2.apk"
+    ],
+
+    "url": [
+      "https://example.com/apps/app1.apk",
+      "https://example.com/apps/app2.apk"
+    ],
+
+    "fdroid": [
+      "org.fdroid.fdroid",
+      "org.torproject.android",
+      "net.osmand.plus",
+      "org.mozilla.fennec_fdroid",
+      "org.thoughtcrime.securesms",
+      "org.briarproject.briar.android",
+      "im.vector.app",
+      "com.orgzly",
+      "net.gsantner.markor",
+      "org.tasks",
+      "org.schabi.newpipe",
+      "org.videolan.vlc",
+      "com.ichi2.anki",
+      "com.termux",
+      "org.connectbot",
+      {
+        "comment": "Alternative syntax for mixed sources",
+        "path": "/path/to/local.apk"
+      },
+      {
+        "url": "https://example.com/app.apk"
+      },
+      {
+        "package": "org.fdroid.fdroid"
+      }
+    ]
+  },
+
+  "examples": {
+    "minimal": {
+      "apps": {
+        "fdroid": [
+          "org.fdroid.fdroid",
+          "org.mozilla.fennec_fdroid"
+        ]
+      }
+    },
+
+    "local_only": {
+      "apps": {
+        "local": [
+          "/home/user/Downloads/app1.apk",
+          "/home/user/Downloads/app2.apk"
+        ]
+      }
+    },
+
+    "urls_only": {
+      "apps": {
+        "url": [
+          "https://github.com/termux/termux-app/releases/download/v0.118.0/termux-app_v0.118.0+github-debug_universal.apk"
+        ]
+      }
+    },
+
+    "mixed": {
+      "apps": {
+        "local": [
+          "/path/to/custom-app.apk"
+        ],
+        "url": [
+          "https://example.com/special-app.apk"
+        ],
+        "fdroid": [
+          "org.fdroid.fdroid",
+          "org.mozilla.fennec_fdroid"
+        ]
+      }
+    }
+  },
+
+  "instructions": [
+    "1. Copy this file: cp apps-example.json my-apps.json",
+    "2. Edit to add your apps: nano my-apps.json",
+    "3. Run installation: install-apps.sh install-batch my-apps.json",
+    "4. Check logs: tail -f /var/log/waydroid-apps/install-*.log",
+    "5. List installed: install-apps.sh list-installed",
+    "6. Check updates: install-apps.sh check-updates",
+    "7. Rollback if needed: install-apps.sh rollback"
+  ],
+
+  "advanced_usage": {
+    "with_options": "install-apps.sh install-batch --force --skip-verify my-apps.json",
+    "single_fdroid": "install-apps.sh install-fdroid org.fdroid.fdroid",
+    "from_url": "install-apps.sh install-apk https://example.com/app.apk",
+    "search": "install-apps.sh search-fdroid termux",
+    "verify": "install-apps.sh verify /path/to/app.apk"
+  },
+
+  "troubleshooting": {
+    "waydroid_not_running": "waydroid container start",
+    "check_logs": "tail -f /var/log/waydroid-apps/install-*.log",
+    "verify_apk": "install-apps.sh verify /path/to/app.apk",
+    "force_install": "Use --force flag to overwrite existing apps",
+    "skip_verification": "Use --skip-verify if signature verification fails",
+    "search_package": "install-apps.sh search-fdroid <name>"
+  }
+}
