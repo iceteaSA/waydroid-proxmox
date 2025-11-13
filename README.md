@@ -53,6 +53,42 @@ Run Android applications on Proxmox using Waydroid in an LXC container with full
 
 ## Quick Start
 
+### 🚀 One-Command Installer (Recommended)
+
+Run this single command on your Proxmox host:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/iceteaSA/waydroid-proxmox/main/ct/waydroid.sh)"
+```
+
+**That's it!** The installer will:
+- Auto-detect your next available container ID
+- Detect your GPU hardware (Intel/AMD) automatically
+- Ask about Google Apps installation
+- Create and configure everything
+- Start all services
+- Display VNC and API credentials
+
+**Features:**
+- ✅ Single command - no git clone needed
+- ✅ Auto-detects GPU and container settings
+- ✅ Works with tteck/Proxmox community scripts
+- ✅ Update capability (re-run to update)
+- ✅ Non-interactive mode for automation
+- ✅ Comprehensive error handling
+
+**Non-Interactive Mode (for automation):**
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/iceteaSA/waydroid-proxmox/main/ct/waydroid.sh)" -s -- \
+  --non-interactive --gpu intel --gapps --ctid 200
+```
+
+See [ct/README.md](ct/README.md) for all options and examples.
+
+### 📋 Legacy Method (Alternative)
+
+If you prefer the traditional two-script approach:
+
 ```bash
 # Clone the repository
 git clone https://github.com/iceteaSA/waydroid-proxmox.git
@@ -69,14 +105,15 @@ chmod +x install/install.sh scripts/*.sh
 ./install/install.sh
 ```
 
-The installer will ask you:
-1. **Container type**: Privileged (GPU passthrough) or Unprivileged (software rendering)
-2. **GPU type**: Intel, AMD, NVIDIA (software), or Software rendering
-3. **GAPPS**: Install Google Play Store (yes/no)
+### After Installation
 
-After installation:
-- **VNC Access**: `<container-ip>:5900`
-- **API Endpoint**: `http://<container-ip>:8080`
+Once complete, you'll receive:
+- **VNC Access**: `<container-ip>:5900` with username/password
+- **API Endpoint**: `http://<container-ip>:8080` with Bearer token
+- **VNC Password**: Displayed in output and saved to `/root/vnc-password.txt`
+- **API Token**: Displayed in output and saved to `/etc/waydroid-api/token`
+
+First boot takes 2-3 minutes while Android initializes.
 
 ## Requirements
 
@@ -130,6 +167,7 @@ waydroid-proxmox/
 ├── scripts/                 # Helper scripts
 │   ├── helper-functions.sh      # Shared functions
 │   ├── configure-intel-n150.sh  # Intel N150 configuration
+│   ├── upgrade-from-v1.sh      # v1.x to v2.0 upgrade script
 │   ├── tune-lxc.sh             # LXC container optimization
 │   ├── enhance-vnc.sh          # WayVNC security & performance enhancements
 │   ├── setup-audio.sh          # Audio passthrough configuration
@@ -143,6 +181,7 @@ waydroid-proxmox/
 │   └── intel-n150.conf     # Intel N150 specific settings
 ├── docs/                    # Documentation
 │   ├── INSTALLATION.md     # Detailed installation guide
+│   ├── UPGRADE_GUIDE.md    # v1.x to v2.0 upgrade guide
 │   ├── HOME_ASSISTANT.md   # Home Assistant integration
 │   ├── CONFIGURATION.md    # Configuration options
 │   ├── LXC_TUNING.md       # LXC optimization guide
@@ -157,6 +196,30 @@ waydroid-proxmox/
 ## Tools & Scripts
 
 The project includes a comprehensive set of tools for optimizing and enhancing your Waydroid installation:
+
+### System Upgrade & Maintenance
+- **upgrade-from-v1.sh**: Safe upgrade from v1.x to v2.0
+  ```bash
+  # Check current version and available upgrades
+  ./scripts/upgrade-from-v1.sh --check
+
+  # Preview upgrade (dry run)
+  ./scripts/upgrade-from-v1.sh --dry-run
+
+  # Interactive upgrade with feature selection
+  ./scripts/upgrade-from-v1.sh
+
+  # Apply security patches only
+  ./scripts/upgrade-from-v1.sh --security-only
+
+  # Full upgrade with all features
+  ./scripts/upgrade-from-v1.sh --all-features
+  ```
+  - Automatic backup and rollback capability
+  - Critical security patches (VNC/API localhost binding, GPU permissions)
+  - Optional v2.0 features (LXC tuning, VNC enhancements, audio, clipboard, app system)
+  - Service state preservation and verification
+  - See [Upgrade Guide](docs/UPGRADE_GUIDE.md) for details
 
 ### Container Optimization
 - **tune-lxc.sh**: LXC container performance optimization
@@ -235,12 +298,19 @@ The project includes a comprehensive set of tools for optimizing and enhancing y
 ### Monitoring & Diagnostics
 - **monitor-performance.sh**: Real-time performance monitoring
 - **health-check.sh**: Container health checks and diagnostics
-- **test-setup.sh**: Comprehensive setup verification
+- **test-complete.sh**: Production-ready comprehensive system testing
+  - Tests all components (GPU, Waydroid, VNC, API, audio, clipboard, network)
+  - Multiple output formats (text, JSON, HTML)
+  - Performance benchmarking and detailed diagnostics
+  - CI/CD integration with proper exit codes
+  - Quick mode (~30s) and thorough mode (~2min)
+- **test-setup.sh**: Original setup verification (legacy)
 
 ## Documentation
 
 ### Getting Started
 - **[Installation Guide](docs/INSTALLATION.md)**: Detailed step-by-step installation instructions
+- **[Upgrade Guide](docs/UPGRADE_GUIDE.md)**: Safely upgrade from v1.x to v2.0 with security patches
 - **[Configuration](docs/CONFIGURATION.md)**: Customize your Waydroid setup
 - **[Troubleshooting](docs/INSTALLATION.md#troubleshooting)**: Common issues and solutions
 
@@ -250,6 +320,10 @@ The project includes a comprehensive set of tools for optimizing and enhancing y
 - **[VNC Quick Reference](docs/VNC-QUICK-REFERENCE.md)**: Common VNC commands and settings
 - **[Clipboard Sharing](docs/CLIPBOARD-SHARING.md)**: Setup and use clipboard integration
 - **[App Installation](docs/APP_INSTALLATION.md)**: Automated app installation and management
+
+### Testing & Validation
+- **[Comprehensive Testing Guide](docs/TESTING.md)**: Complete testing framework documentation
+- **[Testing Quick Reference](docs/TESTING_QUICK_REFERENCE.md)**: Quick reference for testing commands
 
 ### Integration & Automation
 - **[Home Assistant Integration](docs/HOME_ASSISTANT.md)**: Automate Android apps with Home Assistant

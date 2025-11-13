@@ -3,6 +3,20 @@
 # Waydroid LXC Installation Script for Proxmox
 # Copyright (c) 2025
 # License: MIT
+#
+# NOTE: This is the legacy installation script.
+# For the recommended streamlined one-command installer, use:
+#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/iceteaSA/waydroid-proxmox/main/ct/waydroid.sh)"
+#
+# Or run directly:
+#   bash ct/waydroid.sh
+#
+# This legacy script is maintained for compatibility but ct/waydroid.sh offers:
+# - Single command installation
+# - Better error handling
+# - Update capability
+# - Non-interactive mode
+# - Integration with tteck/Proxmox community scripts
 
 # Color definitions
 BL="\033[36m"
