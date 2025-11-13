@@ -54,6 +54,32 @@ if [ -n "$RENDER_NODE" ]; then
     fi
 fi
 
+# Color codes for output formatting
+BL="\e[36m"
+RD="\e[01;31m"
+GN="\e[1;92m"
+YW="\e[1;93m"
+CL="\e[m"
+CM="${GN}✔${CL}"
+CROSS="${RD}✗${CL}"
+
+# Simple message functions for user feedback
+msg_info() {
+    echo -e "${BL}[INFO]${CL} $1"
+}
+
+msg_ok() {
+    echo -e "${CM} $1"
+}
+
+msg_warn() {
+    echo -e "${YW}[WARN]${CL} $1"
+}
+
+msg_error() {
+    echo -e "${CROSS} $1" >&2
+}
+
 # Cleanup on error function
 cleanup_on_error() {
     local exit_code=$?
@@ -286,7 +312,6 @@ if ! verify_exec "install dependencies" silent_exec apt-get install -y \
   gnupg \
   ca-certificates \
   lsb-release \
-  software-properties-common \
   wget \
   unzip; then
     msg_error "Failed to install dependencies"
