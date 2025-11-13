@@ -182,7 +182,9 @@ fi
 
 # Start Sway compositor in headless mode
 echo "Starting Sway compositor..."
-sway -c /dev/null &
+export WLR_BACKENDS=headless
+export WLR_LIBINPUT_NO_DEVICES=1
+sway &
 SWAY_PID=$!
 sleep 5
 
