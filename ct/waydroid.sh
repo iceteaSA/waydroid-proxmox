@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Use local build.func with our custom install script URL
-source <(curl -fsSL https://raw.githubusercontent.com/iceteaSA/waydroid-proxmox/claude/fix-install-spawn-agent-011CV5K7wLiBqwKQTXuuxeCx/misc/build.func)
+source <(curl -fsSL https://raw.githubusercontent.com/iceteaSA/waydroid-proxmox/main/misc/build.func)
 # Copyright (c) 2021-2025 community-scripts ORG
 # Author: iceteaSA
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
