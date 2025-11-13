@@ -464,7 +464,7 @@ echo "$VNC_PASSWORD" > /root/.config/wayvnc/password
 chmod 600 /root/.config/wayvnc/password
 
 cat > /root/.config/wayvnc/config <<EOF
-address=127.0.0.1
+address=0.0.0.0
 port=5900
 enable_auth=true
 username=waydroid
