@@ -184,6 +184,7 @@ fi
 echo "Starting Sway compositor..."
 export WLR_BACKENDS=headless
 export WLR_LIBINPUT_NO_DEVICES=1
+export SWAY_ALLOW_ROOT=1
 sway &
 SWAY_PID=$!
 sleep 5
